@@ -1,0 +1,14 @@
+# Zapper API Configuration
+# Zapper tracks EVM wallet balances and DeFi positions.
+# Get a FREE API key from: https://protocol.zapper.xyz/
+# Copy this file to: ~/.private-financial-ai/secrets/zapper.conf
+
+ZAPPER_API_KEY=your_api_key_here
+
+# Features:
+# - Token balances across Ethereum, Polygon, Arbitrum, etc.
+# - DeFi positions (Aave, Uniswap, Compound, etc.)
+# - NFT holdings
+# - Automatic price updates
+
+# The free tier is generous and sufficient for personal use.

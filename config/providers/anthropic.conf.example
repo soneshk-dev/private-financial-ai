@@ -1,0 +1,12 @@
+# Anthropic API Configuration
+# Get your API key from: https://console.anthropic.com/settings/keys
+# Copy this file to: ~/.private-financial-ai/secrets/anthropic.conf
+
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+
+# Pricing (as of 2025):
+# - Claude Haiku:  $1/M input,  $5/M output  (fast, simple queries)
+# - Claude Sonnet: $3/M input,  $15/M output (balanced)
+# - Claude Opus:   $15/M input, $75/M output (complex reasoning)
+#
+# Typical monthly cost: $5-20 for personal finance use

@@ -1,0 +1,21 @@
+# Bitcoin Wallet Configuration
+# Track Bitcoin holdings using extended public keys (xpub/ypub/zpub).
+# This allows balance tracking without spending capability.
+# Copy this file to: ~/.private-financial-ai/secrets/bitcoin_xpubs.conf
+
+# Format: one wallet per line
+# WALLET_NAME=xpub_key
+
+# Examples:
+# LEDGER_MAIN=xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWZiD6...
+# TREZOR_SAVINGS=zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1...
+
+# How to find your xpub:
+# - Ledger Live: Settings > Accounts > (select account) > Advanced > Extended public key
+# - Trezor: Trezor Suite > Account details > Show xpub
+# - Electrum: Wallet > Information > Master Public Key
+# - Most other wallets: Look in settings or "export" options
+
+# Security note:
+# xpubs can see all addresses and balances but CANNOT spend funds.
+# Still, treat them as sensitive - they reveal your complete transaction history.

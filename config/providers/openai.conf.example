@@ -1,0 +1,10 @@
+# OpenAI API Configuration
+# Get your API key from: https://platform.openai.com/api-keys
+# Copy this file to: ~/.private-financial-ai/secrets/openai.conf
+
+OPENAI_API_KEY=sk-your-key-here
+
+# Pricing (as of 2025):
+# - GPT-4o-mini: $0.15/M input, $0.60/M output (fast, cheap)
+# - GPT-4o:      $2.50/M input, $10/M output   (balanced)
+# - o1:          $15/M input,   $60/M output   (reasoning)

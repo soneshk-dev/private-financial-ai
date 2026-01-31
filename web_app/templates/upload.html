@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload - Private Financial AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #FAF9F7;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 { color: #D97757; }
+        .upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            background: white;
+            margin: 2rem 0;
+        }
+        .upload-area:hover { border-color: #D97757; }
+        input[type="file"] { margin: 1rem 0; }
+        .btn {
+            background: #D97757;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        a { color: #D97757; }
+    </style>
+</head>
+<body>
+    <h1>Upload Financial Data</h1>
+    <p><a href="/">← Back to Chat</a></p>
+
+    <div class="upload-area">
+        <h2>Drop files here or click to upload</h2>
+        <p>Supported formats: CSV (transactions, portfolio), PDF (tax documents)</p>
+        <input type="file" id="fileInput" accept=".csv,.pdf" multiple>
+        <br><br>
+        <button class="btn" onclick="uploadFiles()">Upload</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        async function uploadFiles() {
+            const files = document.getElementById('fileInput').files;
+            if (!files.length) return alert('Please select files');
+
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('files', file);
+            }
+
+            try {
+                const response = await fetch('/api/upload-smart', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                document.getElementById('results').innerHTML =
+                    '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                alert('Upload failed: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

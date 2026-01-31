@@ -1,0 +1,142 @@
+# LLM Provider Configuration
+# Copy this to providers.yaml and customize for your setup
+
+# =============================================================================
+# PROVIDER SETTINGS
+# =============================================================================
+
+# Your primary AI provider - this is the default for all queries
+# Options: anthropic, claude_cli, openai, ollama
+primary_provider: anthropic
+
+providers:
+  # ---------------------------------------------------------------------------
+  # Anthropic (Claude) - RECOMMENDED
+  # ---------------------------------------------------------------------------
+  # Best overall experience. Requires API key from console.anthropic.com
+  # Typical cost: $5-20/month depending on usage
+  anthropic:
+    enabled: true
+    api_key_file: ~/.private-financial-ai/secrets/anthropic.conf
+
+    # Model tiers - the router selects based on query complexity
+    models:
+      simple: claude-haiku-4-5-20250514      # Fast, cheap ($1/M input, $5/M output)
+      moderate: claude-sonnet-4-20250514      # Balanced ($3/M input, $15/M output)
+      complex: claude-sonnet-4-20250514       # Best reasoning (use opus if needed)
+
+    # Optional: Use Opus for complex queries (more expensive but better)
+    # complex: claude-opus-4-20250514        # ($15/M input, $75/M output)
+
+  # ---------------------------------------------------------------------------
+  # Claude CLI - FREE (for Max subscribers)
+  # ---------------------------------------------------------------------------
+  # If you have a Claude Max subscription ($20/month), you can use the CLI
+  # for unlimited queries at no additional cost
+  claude_cli:
+    enabled: false
+    # No API key needed - uses OAuth authentication
+    # Run 'claude auth login' to authenticate
+
+    models:
+      simple: cli:haiku
+      moderate: cli:sonnet
+      complex: cli:opus
+
+    # Usage limits (Max subscription):
+    # - ~45 Opus or ~225 Sonnet messages per 5 hours
+    # - Resets on rolling 5-hour window
+
+  # ---------------------------------------------------------------------------
+  # OpenAI (GPT-4)
+  # ---------------------------------------------------------------------------
+  # Alternative cloud provider. Similar capabilities to Claude.
+  openai:
+    enabled: false
+    api_key_file: ~/.private-financial-ai/secrets/openai.conf
+
+    models:
+      simple: gpt-4o-mini                    # Fast, cheap
+      moderate: gpt-4o                        # Balanced
+      complex: gpt-4o                         # Best available
+
+    # Optional: Use o1 for complex reasoning
+    # complex: o1-preview
+
+  # ---------------------------------------------------------------------------
+  # Ollama (Local Models) - FREE & PRIVATE
+  # ---------------------------------------------------------------------------
+  # Run models locally. Requires Ollama installed and a decent GPU.
+  # Fully private - nothing sent to the cloud.
+  # Install: https://ollama.ai
+  ollama:
+    enabled: false
+    host: http://localhost:11434
+
+    models:
+      simple: llama3.2:3b                    # Fast, minimal VRAM
+      moderate: qwen2.5:14b                   # Good balance
+      complex: qwen2.5:14b                    # Best local option
+
+    # Recommended models by VRAM:
+    # 8GB:  llama3.2:3b, qwen2.5:7b
+    # 16GB: qwen2.5:14b, llama3:8b
+    # 24GB: qwen2.5:32b, mixtral:8x7b
+
+    # Pull models with: ollama pull qwen2.5:14b
+
+# =============================================================================
+# ROUTING SETTINGS
+# =============================================================================
+
+routing:
+  # How to balance cost vs quality
+  # Options: quality, balanced, cost_conscious
+  cost_optimization: balanced
+
+  # balanced (default):
+  #   - Simple queries (balance checks, transaction search) → simple model
+  #   - Analysis queries (spending breakdown, trends) → moderate model
+  #   - Complex queries (tax optimization, advice) → complex model
+  #
+  # quality:
+  #   - Use the best model for everything
+  #
+  # cost_conscious:
+  #   - Use the cheapest model that can handle each query
+  #   - Fall back to better models only when needed
+
+  # Enable fallback to other providers if primary fails
+  fallback_enabled: true
+
+  # Fallback order (if primary fails or is rate-limited)
+  fallback_order:
+    - anthropic
+    - claude_cli
+    - openai
+    - ollama
+
+  # Tool-use requirements
+  # Some queries need to call financial tools - not all providers/models support this
+  tool_capable_providers:
+    - anthropic
+    - claude_cli
+    - openai
+    # Note: Ollama tool support varies by model
+
+# =============================================================================
+# PRIVACY SETTINGS
+# =============================================================================
+
+privacy:
+  # Maximum data to include in AI context
+  # Options: full, summary, minimal
+  context_level: summary
+
+  # full: Include detailed transaction data when relevant
+  # summary: Include aggregated data only (totals, categories)
+  # minimal: Only include what user explicitly asks about
+
+  # Log queries locally (for debugging, never sent anywhere)
+  log_queries: false
+  log_path: ~/.private-financial-ai/logs/queries.log

@@ -1,0 +1,229 @@
+# Personalization Manifest
+# This file defines the decisions an AI assistant should guide users through
+# when setting up their Private Financial AI instance.
+
+setup_phases:
+  - id: identity
+    name: "Personal Information"
+    description: "Basic info to personalize the assistant"
+    decisions:
+      - id: user_name
+        question: "What's your name?"
+        type: text
+        required: true
+        used_in: [CHECKPOINT.md, CLAUDE_LITE.md, memory_system]
+
+      - id: family_members
+        question: "Who else is in your household? (spouse/partner, children, etc.)"
+        type: list
+        required: false
+        used_in: [memory_system]
+        follow_up: "For each person, I'll ask their name and relevant details (like expected college year for children)"
+
+      - id: employer
+        question: "Where do you work? (optional - helps with paycheck categorization)"
+        type: text
+        required: false
+        used_in: [memory_system, transaction_categorization]
+
+  - id: goals
+    name: "Financial Goals"
+    description: "What are you working toward?"
+    decisions:
+      - id: financial_goals
+        question: "What are your main financial goals?"
+        type: list
+        examples:
+          - "Save for retirement"
+          - "Pay off debt (mortgage, student loans, credit cards)"
+          - "Save for children's college"
+          - "Build emergency fund"
+          - "Save for major purchase (house, car, vacation)"
+        required: false
+        used_in: [memory_system, CHECKPOINT.md]
+        follow_up: "For each goal, I may ask about target amounts and timelines"
+
+  - id: llm_provider
+    name: "AI Provider Setup"
+    description: "How should the AI assistant be powered?"
+    decisions:
+      - id: primary_provider
+        question: "Which AI provider would you like to use?"
+        type: choice
+        options:
+          - id: anthropic
+            label: "Claude (Anthropic API)"
+            description: "Best experience, ~$5-20/month typical usage"
+            requires: [anthropic_api_key]
+            recommended: true
+
+          - id: claude_cli
+            label: "Claude CLI (Max subscription)"
+            description: "Free if you have Claude Max ($20/month flat subscription)"
+            requires: [claude_max_subscription]
+
+          - id: openai
+            label: "OpenAI (GPT-4)"
+            description: "Alternative cloud option, similar pricing to Claude"
+            requires: [openai_api_key]
+
+          - id: ollama
+            label: "Local models (Ollama)"
+            description: "Fully private, requires decent GPU, may be slower"
+            requires: [ollama_installed, sufficient_gpu]
+
+          - id: hybrid
+            label: "Hybrid (multiple providers)"
+            description: "Use cheaper/free options when possible, fall back to paid"
+            follow_up: "Which providers should I configure?"
+        required: true
+        used_in: [providers.yaml]
+
+      - id: cost_preference
+        question: "How should I balance cost vs quality?"
+        type: choice
+        condition: "primary_provider != 'ollama'"
+        options:
+          - id: quality
+            label: "Prefer quality"
+            description: "Use the best model available for each query"
+          - id: balanced
+            label: "Balanced (recommended)"
+            description: "Use simpler models for simple queries, better models for complex ones"
+          - id: cost
+            label: "Minimize cost"
+            description: "Use the cheapest option that can handle each query"
+        default: balanced
+        used_in: [providers.yaml, router.py]
+
+  - id: bank_connections
+    name: "Bank Connections"
+    description: "Connect to your bank accounts for automatic transaction tracking"
+    decisions:
+      - id: use_plaid
+        question: "Would you like to connect your bank accounts for automatic transaction syncing?"
+        type: boolean
+        description: |
+          Plaid securely connects to most US banks and automatically imports transactions.
+          Requires a free Plaid developer account.
+          Alternative: You can import transactions manually via CSV.
+        required: true
+        used_in: [plaid.conf]
+        follow_up_if_yes: "I'll guide you through Plaid setup - see docs/PLAID_SETUP.md"
+
+      - id: banks_to_connect
+        question: "Which banks/financial institutions do you use?"
+        type: list
+        condition: "use_plaid == true"
+        examples:
+          - "Chase"
+          - "Bank of America"
+          - "Wells Fargo"
+          - "Capital One"
+          - "Credit unions"
+        used_in: [documentation, plaid_setup]
+
+  - id: investments
+    name: "Investment Tracking"
+    description: "Track your investment accounts"
+    decisions:
+      - id: has_investments
+        question: "Do you have investment accounts you'd like to track?"
+        type: boolean
+        required: true
+
+      - id: investment_institutions
+        question: "Where are your investment accounts?"
+        type: list
+        condition: "has_investments == true"
+        examples:
+          - "Fidelity"
+          - "Vanguard"
+          - "Schwab"
+          - "401k through employer"
+          - "IRA"
+          - "Brokerage account"
+        used_in: [memory_system, portfolio_tools]
+        note: "Investment tracking is primarily via CSV import. Some brokerages may work with Plaid."
+
+  - id: crypto
+    name: "Cryptocurrency"
+    description: "Track crypto holdings"
+    decisions:
+      - id: has_crypto
+        question: "Do you hold any cryptocurrency?"
+        type: boolean
+        required: true
+
+      - id: crypto_types
+        question: "What types of crypto do you hold?"
+        type: multi_choice
+        condition: "has_crypto == true"
+        options:
+          - id: bitcoin
+            label: "Bitcoin"
+            requires: [bitcoin_xpubs or addresses]
+            follow_up: "I'll need your wallet's extended public key (xpub) for tracking"
+
+          - id: ethereum
+            label: "Ethereum / EVM tokens"
+            requires: [wallet_addresses]
+            follow_up: "I'll need your wallet address(es)"
+
+          - id: exchange
+            label: "Held on exchanges (Coinbase, Kraken, etc.)"
+            note: "Some exchanges work with Plaid for balance tracking"
+
+          - id: defi
+            label: "DeFi positions (Aave, Uniswap, etc.)"
+            requires: [wallet_addresses, zapper_api]
+            follow_up: "We'll use Zapper to track DeFi positions"
+        used_in: [crypto_tools, zapper.conf, bitcoin_xpubs.conf]
+
+  - id: privacy
+    name: "Privacy Preferences"
+    description: "Control how your data is handled"
+    decisions:
+      - id: data_sharing_comfort
+        question: "How do you feel about your financial data?"
+        type: choice
+        options:
+          - id: comfortable
+            label: "Comfortable with cloud AI"
+            description: "OK sending queries (not raw data) to Claude/OpenAI"
+
+          - id: minimal
+            label: "Minimize cloud usage"
+            description: "Use local models when possible, cloud only when needed"
+
+          - id: local_only
+            label: "Local only"
+            description: "Never send anything to cloud AI providers"
+            requires: [ollama_installed]
+        used_in: [providers.yaml, router.py]
+
+# Files that get generated based on these decisions
+generated_files:
+  - path: CHECKPOINT.md
+    template: personalization/templates/CHECKPOINT.template.md
+    uses: [user_name, family_members, employer, financial_goals, banks, investments, crypto]
+
+  - path: CLAUDE_LITE.md
+    template: personalization/templates/CLAUDE_LITE.template.md
+    uses: [user_name, family_members, financial_goals]
+
+  - path: config/providers/providers.yaml
+    template: config/providers/providers.yaml.example
+    uses: [primary_provider, cost_preference, privacy_preference]
+
+  - path: config/plaid.conf
+    condition: "use_plaid == true"
+    uses: [plaid_credentials]
+
+  - path: config/zapper.conf
+    condition: "crypto_types includes 'ethereum' or 'defi'"
+    uses: [zapper_api_key]
+
+  - path: config/bitcoin_xpubs.conf
+    condition: "crypto_types includes 'bitcoin'"
+    uses: [bitcoin_wallet_info]

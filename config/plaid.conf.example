@@ -1,0 +1,16 @@
+# Plaid Configuration
+# Plaid connects to your bank accounts for automatic transaction syncing.
+# Get credentials from: https://dashboard.plaid.com/developers/keys
+# Copy this file to: ~/.private-financial-ai/secrets/plaid.conf
+
+# Your Plaid credentials (from dashboard.plaid.com)
+PLAID_CLIENT_ID=your_client_id
+PLAID_SECRET=your_secret_key
+
+# Environment: sandbox, development, or production
+# - sandbox: Free, uses test data (for initial testing)
+# - development: Free, real bank connections, 100 items limit
+# - production: Paid, unlimited (most users don't need this)
+PLAID_ENV=development
+
+# See docs/PLAID_SETUP.md for complete setup instructions

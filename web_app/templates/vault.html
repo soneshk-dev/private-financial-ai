@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Vault - Private Financial AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #FAF9F7;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 { color: #D97757; }
+        .search-bar {
+            display: flex;
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        .btn {
+            background: #D97757;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .documents {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .document-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid #eee;
+        }
+        .document-card h3 { margin: 0 0 0.5rem; }
+        .document-type {
+            display: inline-block;
+            background: #f0f0f0;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        a { color: #D97757; }
+    </style>
+</head>
+<body>
+    <h1>Document Vault</h1>
+    <p><a href="/">← Back to Chat</a></p>
+
+    <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search documents...">
+        <button class="btn" onclick="searchDocuments()">Search</button>
+    </div>
+
+    <div class="documents" id="documentGrid"></div>
+
+    <script>
+        async function loadDocuments() {
+            const response = await fetch('/api/vault/documents');
+            const data = await response.json();
+            renderDocuments(data.documents);
+        }
+
+        async function searchDocuments() {
+            const query = document.getElementById('searchInput').value;
+            if (!query) return loadDocuments();
+
+            const response = await fetch('/api/vault/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+            const data = await response.json();
+            renderDocuments(data.documents);
+        }
+
+        function renderDocuments(documents) {
+            const grid = document.getElementById('documentGrid');
+            grid.innerHTML = documents.map(doc => `
+                <div class="document-card">
+                    <h3>${doc.filename}</h3>
+                    <span class="document-type">${doc.document_type || 'Unknown'}</span>
+                    <p>${doc.summary || 'No summary'}</p>
+                    ${doc.expiration_date ? `<p>Expires: ${doc.expiration_date}</p>` : ''}
+                </div>
+            `).join('');
+        }
+
+        loadDocuments();
+    </script>
+</body>
+</html>
