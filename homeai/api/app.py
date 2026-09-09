@@ -1,0 +1,187 @@
+"""FastAPI read/write surface. Binds to localhost; put an authenticating proxy
+(Cloudflare Access, Tailscale) in front for remote use."""
+from __future__ import annotations
+
+import sqlite3
+from datetime import date
+from typing import Any
+
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+
+from .. import __version__
+from ..config import Config, load_config
+from ..db import connect, migrate
+from ..ledger.accounts import set_locked
+from ..ledger.transactions import set_override
+from ..services import cashflow, health, overview, portfolio
+
+
+class AccountPatch(BaseModel):
+    kind: str | None = None
+    entity: str | None = None
+    name: str | None = None
+    is_active: bool | None = None
+
+
+class TxnPatch(BaseModel):
+    flow_type: str | None = None
+    category: str | None = None
+
+
+class Exchange(BaseModel):
+    public_token: str
+
+
+def create_app(cfg: Config | None = None) -> FastAPI:
+    cfg = cfg or load_config()
+    app = FastAPI(title="homeai", version=__version__)
+    app.state.cfg = cfg
+    with connect(cfg.db_path) as c:
+        migrate(c)
+
+    def db():
+        conn = connect(cfg.db_path)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    @app.get("/api/health")
+    def api_health(conn: sqlite3.Connection = Depends(db)):
+        return {"version": __version__, **health.status(conn)}
+
+    @app.get("/api/accounts")
+    def api_accounts(all: bool = False, conn: sqlite3.Connection = Depends(db)):
+        return overview.accounts_summary(conn, active_only=not all)
+
+    @app.patch("/api/accounts/{account_id}")
+    def api_account_patch(account_id: str, body: AccountPatch, conn: sqlite3.Connection = Depends(db)):
+        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        if not fields:
+            raise HTTPException(400, "nothing to update")
+        try:
+            conn.execute("BEGIN")
+            set_locked(conn, account_id, **fields)
+            conn.execute("COMMIT")
+        except KeyError:
+            conn.execute("ROLLBACK")
+            raise HTTPException(404, "account not found")
+        return {"ok": True, "locked": list(fields)}
+
+    @app.get("/api/net-worth")
+    def api_net_worth(days: int = Query(365, ge=1, le=3650), conn: sqlite3.Connection = Depends(db)):
+        return overview.net_worth(conn, days)
+
+    @app.get("/api/cashflow")
+    def api_cashflow(months: int = Query(12, ge=1, le=120), entity: str | None = None,
+                     conn: sqlite3.Connection = Depends(db)):
+        return cashflow.monthly_cashflow(conn, months, entity)
+
+    @app.get("/api/spending")
+    def api_spending(month: str | None = None, entity: str | None = None, conn: sqlite3.Connection = Depends(db)):
+        month = month or date.today().strftime("%Y-%m")
+        return cashflow.spending_by_category(conn, month, entity)
+
+    @app.get("/api/budgets")
+    def api_budgets(month: str | None = None, conn: sqlite3.Connection = Depends(db)):
+        return cashflow.budget_status(conn, month or date.today().strftime("%Y-%m"))
+
+    @app.get("/api/transactions")
+    def api_transactions(start: str | None = None, end: str | None = None, account_id: str | None = None,
+                         flow: str | None = None, category: str | None = None, q: str | None = None,
+                         entity: str | None = None, pending: bool = True, limit: int = 200, offset: int = 0,
+                         conn: sqlite3.Connection = Depends(db)):
+        return cashflow.search_transactions(conn, start=start, end=end, account_id=account_id, flow=flow,
+                                            category=category, q=q, entity=entity, include_pending=pending,
+                                            limit=limit, offset=offset)
+
+    @app.patch("/api/transactions/{txn_id}")
+    def api_txn_patch(txn_id: str, body: TxnPatch, conn: sqlite3.Connection = Depends(db)):
+        if not conn.execute("SELECT 1 FROM transactions WHERE id = ?", (txn_id,)).fetchone():
+            raise HTTPException(404, "transaction not found")
+        conn.execute("BEGIN")
+        set_override(conn, txn_id, flow_type=body.flow_type, category=body.category)
+        conn.execute("COMMIT")
+        return {"ok": True}
+
+    @app.get("/api/positions")
+    def api_positions(conn: sqlite3.Connection = Depends(db)):
+        return portfolio.positions(conn)
+
+    @app.get("/api/crypto")
+    def api_crypto(conn: sqlite3.Connection = Depends(db)):
+        return portfolio.crypto(conn)
+
+    @app.post("/api/sync")
+    def api_sync(only: str | None = None, force: bool = False, conn: sqlite3.Connection = Depends(db)):
+        from ..jobs.sync import run_sync
+        return run_sync(conn, cfg, only=only.split(",") if only else None, force=force)
+
+    # --- Plaid Link -------------------------------------------------------------
+    @app.post("/api/plaid/link-token")
+    def api_plaid_link_token(connection_id: str | None = None, redirect_uri: str | None = None):
+        from ..connectors.plaid import PlaidConnector
+        p = PlaidConnector(cfg)
+        if not p.configured():
+            raise HTTPException(503, "Plaid not configured")
+        with connect(cfg.db_path) as conn:
+            if connection_id:
+                return p.link_token_for_update(conn, connection_id, redirect_uri)
+        return p.create_link_token(redirect_uri=redirect_uri)
+
+    @app.post("/api/plaid/exchange")
+    def api_plaid_exchange(body: Exchange, conn: sqlite3.Connection = Depends(db)):
+        from ..connectors.plaid import PlaidConnector
+        p = PlaidConnector(cfg)
+        conn.execute("BEGIN")
+        try:
+            out = p.exchange_public_token(conn, body.public_token)
+            conn.execute("COMMIT")
+        except Exception as e:  # noqa: BLE001
+            conn.execute("ROLLBACK")
+            raise HTTPException(502, str(e))
+        return out
+
+    @app.delete("/api/plaid/connections/{connection_id}")
+    def api_plaid_remove(connection_id: str, conn: sqlite3.Connection = Depends(db)):
+        from ..connectors.plaid import PlaidConnector
+        conn.execute("BEGIN")
+        PlaidConnector(cfg).remove_connection(conn, connection_id)
+        conn.execute("COMMIT")
+        return {"ok": True}
+
+    @app.get("/link", response_class=HTMLResponse)
+    def link_page(connection_id: str | None = None):
+        """Minimal Plaid Link page: new connection, or update mode for ?connection_id=."""
+        return LINK_HTML.replace("__CONNECTION_ID__", connection_id or "")
+
+    return app
+
+
+LINK_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>homeai · link an institution</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<style>body{font-family:system-ui;margin:3rem;max-width:40rem}button{font-size:1rem;padding:.6rem 1rem}pre{background:#f4f4f4;padding:1rem}</style>
+</head><body><h1>Link an institution</h1>
+<p id="mode"></p><button id="go">Open Plaid Link</button><pre id="out"></pre>
+<script>
+const cid = "__CONNECTION_ID__";
+document.getElementById('mode').textContent = cid ? 'Update mode for connection ' + cid : 'New connection';
+document.getElementById('go').onclick = async () => {
+  const out = document.getElementById('out');
+  const r = await fetch('/api/plaid/link-token' + (cid ? '?connection_id=' + encodeURIComponent(cid) : ''), {method:'POST'});
+  const j = await r.json();
+  if (!j.link_token) { out.textContent = JSON.stringify(j, null, 2); return; }
+  const handler = Plaid.create({token: j.link_token, onSuccess: async (public_token) => {
+    if (cid) { out.textContent = 'Updated. Run a sync.'; return; }
+    const x = await fetch('/api/plaid/exchange', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({public_token})});
+    out.textContent = JSON.stringify(await x.json(), null, 2);
+  }, onExit: (err) => { if (err) out.textContent = JSON.stringify(err, null, 2); }});
+  handler.open();
+};
+</script></body></html>"""
+
+
+app = None  # created lazily by `homeai serve`

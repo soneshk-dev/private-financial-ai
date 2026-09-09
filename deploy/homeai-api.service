@@ -1,0 +1,17 @@
+# ~/.config/systemd/user/homeai-api.service
+[Unit]
+Description=homeai API (localhost only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/pfa
+Environment=HOMEAI_PRIVATE_DIR=%h/pfa/private
+Environment=HOMEAI_VAULT_DIR=%h/homeai-vault
+ExecStart=%h/pfa/.venv/bin/homeai serve
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

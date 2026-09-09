@@ -1,0 +1,53 @@
+# homeai configuration. Copy to $HOMEAI_PRIVATE_DIR/config.yaml (default ./private/config.yaml).
+# Everything in here is personal; the private dir is gitignored in the public repo.
+
+vault_dir: ~/homeai-vault          # ledger.db, raw payloads, documents
+secrets_dir: ~/.home-ai-secrets    # one KEY=VALUE file per provider (plaid.conf, fina.conf, zerion.conf, ...)
+timezone: America/Chicago
+default_entity: personal
+
+api:
+  host: 127.0.0.1
+  port: 5010
+
+# Institutions whose "mortgage" loans are really a HELOC.
+heloc_institutions: []
+
+# Accounts with no connector. Balances are recorded on every sync.
+manual_accounts:
+  - name: Primary home
+    kind: real_estate
+    balance: 500000
+    institution: Zillow estimate
+
+# Force fields on connector accounts. Matched fields: source, source_account_id, institution,
+# name_contains, mask, kind. Set fields: kind, entity, name, is_active.
+account_overrides:
+  - match: { institution: Some Bank, name_contains: Business }
+    set: { entity: "business:acme" }
+
+# Extra flow rules, regex on description (case-insensitive). Checked before built-in rules.
+flow_rules:
+  - pattern: "ACME PAYROLL"
+    flow_type: income
+  - pattern: "OWNER DRAW"
+    flow_type: transfer
+
+plaid:
+  client_name: homeai
+  products: [transactions]        # add "investments" once your Plaid account has it
+  country_codes: [US]
+
+fina:
+  institution_filter: Fidelity
+  skip_kinds: [credit_card]
+  transaction_days: 120
+
+zerion:
+  wallets:
+    - { name: Hot wallet, chain: ethereum, address: "0x..." }
+
+bitcoin:
+  xpub_file: bitcoin_xpubs.conf   # name=xpub|descriptor lines in secrets_dir
+  every_days: 7
+  gap_limit: 50

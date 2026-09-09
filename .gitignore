@@ -1,0 +1,35 @@
+# --- private overlay: never tracked in this (public) repo ---
+private/
+# --- data: databases, documents, raw provider payloads, logs ---
+vault/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+# --- secrets ---
+.env
+.env.*
+*.conf
+*.key
+*.pem
+*.passphrase
+# --- python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+# --- editors / os ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+# --- agent state ---
+.claude/

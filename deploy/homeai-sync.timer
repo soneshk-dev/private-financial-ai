@@ -1,0 +1,11 @@
+# ~/.config/systemd/user/homeai-sync.timer
+[Unit]
+Description=Run homeai sync daily at 06:10
+
+[Timer]
+OnCalendar=*-*-* 06:10:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
