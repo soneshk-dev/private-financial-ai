@@ -32,8 +32,12 @@ def test_spending_by_category(conn, seeded):
 def test_budget_status(conn, seeded):
     conn.execute("INSERT INTO budgets (category_l1, monthly_limit, effective_from, alert_threshold) VALUES"
                  " ('Food & Dining', 50, '2026-01-01', 0.8)")
-    st = cashflow.budget_status(conn, TODAY.strftime("%Y-%m"))
-    assert st[0]["spent"] == 45.25 and st[0]["status"] == "warning"
+    conn.execute("INSERT INTO budgets (category_l1, monthly_limit, effective_from) VALUES ('Restaurants', 100, '2026-01-01')")
+    conn.execute("INSERT INTO budgets (category_l1, monthly_limit, effective_from) VALUES ('Taxes', 2000, '2026-01-01')")
+    st = {b["category"]: b for b in cashflow.budget_status(conn, TODAY.strftime("%Y-%m"))}
+    assert st["Food & Dining"]["spent"] == 45.25 and st["Food & Dining"]["status"] == "warning"
+    assert st["Restaurants"]["spent"] == 45.25 and st["Restaurants"]["status"] == "ok"
+    assert st["Taxes"]["spent"] == 1500.0 and st["Taxes"]["status"] == "ok"
 
 
 def test_search_transactions(conn, seeded):

@@ -84,16 +84,22 @@ def search_transactions(conn: sqlite3.Connection, *, start: str | None = None, e
 
 
 def budget_status(conn: sqlite3.Connection, month: str) -> list[dict[str, Any]]:
+    """Budgets are keyed by a category name that is either a level-1 category
+    ("Food & Dining") or a sub-category name ("Insurance", "Taxes"). Taxes also
+    count ``flow = 'tax'`` rows, which are not spending."""
     start, end = month_bounds(month)
-    spent = {r["category_l1"]: -r["s"] for r in conn.execute(
-        f"SELECT category_l1, SUM(amount) AS s FROM transactions_v WHERE pending = 0 AND flow IN ({_SPEND})"
-        " AND posted_at BETWEEN ? AND ? GROUP BY category_l1", (start, end))}
     out = []
     for b in conn.execute("SELECT * FROM budgets WHERE is_active = 1 AND effective_from <= ?"
                           " AND (effective_until IS NULL OR effective_until >= ?) ORDER BY category_l1", (end, start)):
-        s = round(spent.get(b["category_l1"], 0.0), 2)
+        name = b["category_l1"]
+        s = -(conn.execute(f"""
+            SELECT COALESCE(SUM(amount), 0) FROM transactions_v
+            WHERE pending = 0 AND posted_at BETWEEN ? AND ?
+              AND ((flow IN ({_SPEND}) AND (category_l1 = ? OR category LIKE ('% > ' || ? || '%')))
+                   OR (? = 'Taxes' AND flow = 'tax'))""", (start, end, name, name, name)).fetchone()[0] or 0)
+        s = round(s, 2)
         pct = round(s / b["monthly_limit"], 3) if b["monthly_limit"] else None
-        out.append({"category": b["category_l1"], "limit": b["monthly_limit"], "spent": s, "pct": pct,
+        out.append({"category": name, "limit": b["monthly_limit"], "spent": s, "pct": pct,
                     "status": "over" if pct and pct >= 1 else ("warning" if pct and pct >= b["alert_threshold"] else "ok")})
     return out
 

@@ -198,12 +198,14 @@ def backfill(conn: sqlite3.Connection, cfg: Config, old_db: str, as_of: str | No
         counts["transactions_existing"] = n_skip
 
         # --- budgets, category rules, ticker mappings ----------------------------
-        for b in old.execute("SELECT * FROM budgets"):
-            conn.execute("INSERT INTO budgets (category_l1, monthly_limit, effective_from, effective_until,"
-                         " alert_threshold, is_active) VALUES (?,?,?,?,?,?)",
-                         (b["category_level1"] or b["category_normalized"], float(b["monthly_limit"]), b["effective_from"],
-                          b["effective_until"], float(b["alert_threshold"] or 0.8), int(bool(b["is_active"]))))
-            counts["budgets"] = counts.get("budgets", 0) + 1
+        if conn.execute("SELECT COUNT(*) FROM budgets").fetchone()[0] == 0:
+            for b in old.execute("SELECT * FROM budgets"):
+                conn.execute("INSERT INTO budgets (category_l1, monthly_limit, effective_from, effective_until,"
+                             " alert_threshold, is_active) VALUES (?,?,?,?,?,?)",
+                             (b["category_normalized"] or b["category_level1"], float(b["monthly_limit"]),
+                              b["effective_from"], b["effective_until"], float(b["alert_threshold"] or 0.8),
+                              int(bool(b["is_active"]))))
+                counts["budgets"] = counts.get("budgets", 0) + 1
         existing_rules = conn.execute("SELECT COUNT(*) FROM category_rules").fetchone()[0]
         if existing_rules == 0:
             for r in old.execute("SELECT * FROM category_rules WHERE merchant_pattern IS NOT NULL AND category_full IS NOT NULL"):
