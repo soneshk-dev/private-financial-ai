@@ -224,6 +224,7 @@ _DESC_RULES = [
     (re.compile(r"\bINTEREST CHARGE|\bFINANCE CHARGE", re.I), "fee"),
     (re.compile(r"\b(IRS|USATAXPYMT|TAX ?PAYMENT|ESTIMATED TAX|IL DEPT OF REVENUE|DEPT OF REV)\b", re.I), "tax"),
     (re.compile(r"\b(PAYROLL|DIRECT DEP|DIR DEP|SALARY|SEVERANCE)\b", re.I), "income"),
+    (re.compile(r"\b(MORTGAGE|MTG PMT|HELOC|LOAN PAYMENT|LOAN PMT)\b", re.I), "loan_payment"),   # outflows only
 ]
 _TRANSFER_DESC = re.compile(r"\b(TRANSFER|XFER|ZELLE|VENMO|ONLINE PAYMENT|AUTOPAY|PAYMENT THANK YOU|"
                             r"PAYMENT - THANK YOU|MOBILE PAYMENT|ACH PMT|EPAY)\b", re.I)
@@ -258,6 +259,8 @@ def infer_flow(category: str | None, amount: float, account_kind: str = "checkin
         if pat.search(desc):
             if flow == "interest" and amount < 0:
                 return "fee"
+            if flow == "loan_payment" and amount >= 0:
+                continue  # an inflow mentioning a mortgage (escrow refund, cash-out) is not a payment
             return flow
 
     # 3. category signals
