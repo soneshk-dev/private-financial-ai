@@ -101,7 +101,7 @@ def test_backfill_from_old_schema(tmp_path, cfg, conn):
     o.execute("INSERT INTO plaid_accounts VALUES ('pa1','item1','loc1','TOTAL CHECKING',NULL,'depository','checking','1234',1042.8,1000,1,'x')")
     o.execute("INSERT INTO plaid_accounts VALUES ('pa2','item1','loc2','Mortgage',NULL,'loan','mortgage','7364',577164.32,NULL,1,'x')")
     o.execute("INSERT INTO plaid_accounts VALUES ('pa3','item2','loc3','Plaid Checking',NULL,'depository','checking','0000',110,NULL,0,'x')")
-    o.execute("INSERT INTO investment_accounts VALUES ('ia1',NULL,'BOSCH SAVINGS INCENTIVE PLAN-1652','Fidelity','brokerage',0,1,'x','x','fina-1','2026-09-07T05:00:06',470280.92)")
+    o.execute("INSERT INTO investment_accounts VALUES ('ia1',NULL,'ACME SAVINGS INCENTIVE PLAN-1652','Fidelity','brokerage',0,1,'x','x','fina-1','2026-09-07T05:00:06',470280.92)")
     o.execute("INSERT INTO investment_accounts VALUES ('ia2',NULL,'Cash Management (Joint WROS - TOD)-7733','Fidelity','brokerage',1,1,'x','x','fina-2','2026-09-07T05:00:06',349676.74)")
     o.execute("INSERT INTO investment_accounts VALUES ('ia3',NULL,'Fidelity Rewards Visa Signature Card 6271','Fidelity','credit_card',0,0,'x','x','fina-3','2026-09-07',25712.91)")
     o.execute("INSERT INTO holdings VALUES ('h1','ia1','NTSP500',NULL,'Nt S&P 500 Idx Nl 4',444.658,NULL,NULL,361.08,160560,'Mutual Fund',0,'2026-09-07T05:00:08')")
@@ -136,7 +136,7 @@ def test_backfill_from_old_schema(tmp_path, cfg, conn):
     assert counts["budgets"] == 1 and counts["category_rules"] == 1 and counts["ticker_mappings"] == 1
     kinds = {r["name"]: (r["kind"], r["is_active"]) for r in conn.execute("SELECT name, kind, is_active FROM accounts")}
     assert kinds["Mortgage"] == ("mortgage", 1) and kinds["Plaid Checking"] == ("checking", 0)
-    assert kinds["BOSCH SAVINGS INCENTIVE PLAN-1652"] == ("retirement_401k", 1)
+    assert kinds["ACME SAVINGS INCENTIVE PLAN-1652"] == ("retirement_401k", 1)
     assert kinds["Cash Management (Joint WROS - TOD)-7733"] == ("cash_mgmt", 1)
     assert kinds["Fidelity Rewards Visa Signature Card 6271"] == ("credit_card", 0)
     assert kinds["Unknown (legacy import)"] == ("other", 0)

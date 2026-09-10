@@ -55,12 +55,12 @@ def test_user_rules_take_precedence():
 
 
 def test_kind_detection(cfg):
-    assert kind_from_name("BOSCH SAVINGS INCENTIVE PLAN-1652") == "retirement_401k"
+    assert kind_from_name("ACME SAVINGS INCENTIVE PLAN-1652") == "retirement_401k"
     assert kind_from_name("BrokerageLink Roth-2800") == "roth_401k"
     assert kind_from_name("Rollover IRA-5040") == "ira"
     assert kind_from_name("Health Savings Account-2557") == "hsa"
     assert kind_from_name("Cash Management (Joint WROS - TOD)-7733") == "cash_mgmt"
-    assert kind_from_name("ROBERT BOSCH LLC DEFERRED COMPENSATION PLAN-2512") == "deferred_comp"
+    assert kind_from_name("ACME LLC DEFERRED COMPENSATION PLAN-2512") == "deferred_comp"
     assert kind_from_name("INDIVIDUAL - YOUTH ACCOUNT-9307") == "custodial"
     assert kind_from_name("Individual - TOD-1439") == "brokerage"
     assert kind_from_plaid("loan", "mortgage", "Mortgage 7364", "Big Bank", cfg) == "mortgage"
