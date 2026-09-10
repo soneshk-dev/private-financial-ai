@@ -2,12 +2,13 @@
 (Cloudflare Access, Tailscale) in front for remote use."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .. import __version__
@@ -32,6 +33,13 @@ class TxnPatch(BaseModel):
 
 class Exchange(BaseModel):
     public_token: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_id: str | None = None
+    provider: str | None = None
+    allow_mutating: bool = True
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
@@ -151,6 +159,72 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         PlaidConnector(cfg).remove_connection(conn, connection_id)
         conn.execute("COMMIT")
         return {"ok": True}
+
+    # --- Chat ---------------------------------------------------------------------
+    @app.get("/api/models")
+    def api_models():
+        from ..llm.provider import provider_status
+        return provider_status(cfg)
+
+    @app.get("/api/conversations")
+    def api_conversations(conn: sqlite3.Connection = Depends(db)):
+        from ..llm import agent
+        return agent.list_conversations(conn)
+
+    @app.get("/api/conversations/{cid}")
+    def api_conversation(cid: str, conn: sqlite3.Connection = Depends(db)):
+        from ..llm import agent
+        c = agent.get_conversation(conn, cid)
+        if not c:
+            raise HTTPException(404, "conversation not found")
+        return c
+
+    @app.delete("/api/conversations/{cid}")
+    def api_conversation_delete(cid: str, conn: sqlite3.Connection = Depends(db)):
+        conn.execute("BEGIN")
+        conn.execute("DELETE FROM messages WHERE conversation_id = ?", (cid,))
+        n = conn.execute("DELETE FROM conversations WHERE id = ?", (cid,)).rowcount
+        conn.execute("COMMIT")
+        return {"deleted": n}
+
+    @app.post("/api/chat")
+    def api_chat(body: ChatRequest):
+        """Server-sent events: conversation, routing, reasoning, tool_call, tool_result, message, done, error."""
+        from ..llm import agent
+
+        def gen():
+            conn = connect(cfg.db_path)
+            try:
+                for ev in agent.run(conn, cfg, body.message, conversation_id=body.conversation_id,
+                                    provider_name=body.provider, allow_mutating=body.allow_mutating):
+                    yield f"event: {ev['type']}\ndata: {json.dumps(ev, default=str)}\n\n"
+            finally:
+                conn.close()
+        return StreamingResponse(gen(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/api/chat/ask")
+    def api_chat_ask(body: ChatRequest, conn: sqlite3.Connection = Depends(db)):
+        """Non-streaming convenience: returns the final answer."""
+        from ..llm import agent
+        events = list(agent.run(conn, cfg, body.message, conversation_id=body.conversation_id,
+                                provider_name=body.provider, allow_mutating=body.allow_mutating))
+        answer = next((e["content"] for e in reversed(events) if e["type"] == "message"), None)
+        err = next((e["message"] for e in events if e["type"] == "error"), None)
+        return {"conversation_id": next((e["id"] for e in events if e["type"] == "conversation"), None),
+                "answer": answer, "error": err,
+                "tools": [e["name"] for e in events if e["type"] == "tool_call"],
+                "usage": next((e["usage"] for e in events if e["type"] == "done"), None)}
+
+    @app.get("/api/brief")
+    def api_brief(conn: sqlite3.Connection = Depends(db)):
+        from ..services.brief import daily_brief
+        return {"text": daily_brief(conn, cfg)}
+
+    @app.get("/api/profile")
+    def api_profile(regenerate: bool = False, conn: sqlite3.Connection = Depends(db)):
+        from ..llm import profile
+        return {"text": profile.load(conn, cfg, regenerate=regenerate)}
 
     @app.get("/link", response_class=HTMLResponse)
     def link_page(connection_id: str | None = None):

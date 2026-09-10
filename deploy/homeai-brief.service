@@ -1,0 +1,12 @@
+# ~/.config/systemd/user/homeai-brief.service
+[Unit]
+Description=homeai daily Telegram brief
+After=network-online.target homeai-sync.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/pfa
+Environment=HOMEAI_PRIVATE_DIR=%h/pfa/private
+Environment=HOMEAI_VAULT_DIR=%h/homeai-vault
+ExecStart=%h/pfa/.venv/bin/homeai brief --send

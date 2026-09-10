@@ -45,5 +45,10 @@ def run_sync(conn: sqlite3.Connection, cfg: Config, only: list[str] | None = Non
     snap = snapshot_day(conn, as_of)
     pruned = prune_raw(conn, keep_days=60)
     conn.execute("COMMIT")
+    try:  # refresh the model context file; never fail the sync over it
+        from ..llm.profile import write_generated
+        write_generated(conn, cfg)
+    except Exception:  # noqa: BLE001
+        pass
     return {"as_of": as_of, "connectors": [r.as_dict() for r in results], "transfer_pairs": pairs,
             "snapshot": {k: snap[k] for k in ("assets", "liabilities", "net_worth")}, "raw_pruned": pruned}

@@ -24,6 +24,13 @@ Not financial advice. No cloud. No telemetry.
   positions and allocation, crypto and Aave health factor, transaction search
   with overrides.
 - **Backfill.** One command imports the previous Shah AI database.
+- **Local model loop.** One agent loop over OpenAI-compatible local endpoints
+  (a vLLM/TabbyAPI box, Ollama) with a tool registry generated from the
+  services. Conversations persist; the system prompt is one generated profile
+  plus a hand-written `private/profile.md`. No cloud models.
+- **MCP server** exposing the same tools to Claude Code or any MCP client
+  (`homeai mcp`, stdio or streamable HTTP, optional read-only mode).
+- **Daily brief** over Telegram, computed deterministically from the ledger.
 
 ## Layout
 
@@ -34,8 +41,12 @@ homeai/
   migrations/        0001_init.sql ...
   ledger/            accounts, balances/positions, transactions, classify, snapshots
   connectors/        plaid, fina, zerion, bitcoin (+ base with health/raw capture)
-  services/          overview, cashflow, portfolio, health (pure read functions)
-  api/app.py         FastAPI surface (+ /link page for Plaid Link)
+  services/          overview, cashflow, portfolio, health, brief (pure read functions)
+  tools/registry.py  tool definitions + handlers over the services (chat loop and MCP share it)
+  llm/               provider (OpenAI-compatible client), agent (the loop), profile (context file)
+  mcp_server.py      MCP server generated from the registry
+  notify/telegram.py Telegram sender
+  api/app.py         FastAPI surface (+ /api/chat SSE, /link page for Plaid Link)
   jobs/sync.py       connectors → transfer pairing → snapshot → prune
   backfill/legacy.py import from the old main.db
   cli.py             homeai migrate | sync | snapshot | backfill | serve | ...
@@ -70,6 +81,10 @@ homeai backfill --from ~/home-ai/vault/databases/main.db          # optional, pr
 homeai sync
 homeai networth
 homeai serve            # http://127.0.0.1:5010/docs
+homeai models           # which local endpoints are reachable
+homeai chat "how much did I spend on restaurants last month?"
+homeai brief --send     # Telegram daily brief (secrets_dir/telegram.conf)
+homeai mcp              # MCP over stdio:  claude mcp add homeai -- ~/pfa/.venv/bin/homeai mcp
 ```
 
 Run tests with `pytest`.

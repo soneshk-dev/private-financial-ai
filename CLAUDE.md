@@ -19,10 +19,19 @@ Implement `name`, `configured()`, `sync(conn, cfg, as_of) -> SyncResult`; write 
 
 Put the SQL in `homeai/services/*.py` as a pure function over a connection, expose it in `api/app.py`, add a test in `tests/test_services_api.py`. The MCP tools and chat layer (next phase) wrap the same functions.
 
+## Adding a tool (chat + MCP)
+
+Add a `Tool(...)` to `homeai/tools/registry.py` whose handler calls a service function. Mark `mutating=True` if it writes. That is the whole change: the chat loop and the MCP server read the registry. Add a case to `tests/test_agent.py`.
+
+## Model context
+
+The system prompt is `vault/profile.generated.md` (rebuilt on every sync from the ledger) followed by `private/profile.md` (hand-written household facts, goals, preferences). Keep the generated part structural; the model calls tools for numbers.
+
 ## Commands
 
 ```
 homeai migrate | sync [--only plaid,fina] [--force] | snapshot | backfill --from PATH
 homeai accounts | health | networth | cashflow | spending --month YYYY-MM | reclassify | pair
 homeai serve | homeai plaid link-token [--update ID] | plaid exchange TOKEN | plaid remove ID
+homeai chat "question" [--provider spark] [--events] | models | profile | brief [--send] | mcp [--http --port 5011] [--readonly]
 ```

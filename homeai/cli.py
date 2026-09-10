@@ -38,6 +38,20 @@ def main(argv: list[str] | None = None) -> int:
     sv = sub.add_parser("serve", help="run the API")
     sv.add_argument("--host")
     sv.add_argument("--port", type=int)
+    ch = sub.add_parser("chat", help="ask the local model one question (tools enabled)")
+    ch.add_argument("message")
+    ch.add_argument("--provider")
+    ch.add_argument("--conversation")
+    ch.add_argument("--events", action="store_true", help="print every event, not just the answer")
+    sub.add_parser("models", help="local model providers and reachability")
+    pr = sub.add_parser("profile", help="regenerate and print the model context file")
+    pr.add_argument("--generated-only", action="store_true")
+    br = sub.add_parser("brief", help="daily brief")
+    br.add_argument("--send", action="store_true", help="send to Telegram")
+    mc = sub.add_parser("mcp", help="run the MCP server (stdio by default)")
+    mc.add_argument("--http", action="store_true")
+    mc.add_argument("--port", type=int, default=5011)
+    mc.add_argument("--readonly", action="store_true")
     pl = sub.add_parser("plaid", help="Plaid helpers")
     pls = pl.add_subparsers(dest="plaid_cmd", required=True)
     plt = pls.add_parser("link-token")
@@ -119,6 +133,43 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
         from .api.app import create_app
         uvicorn.run(create_app(cfg), host=a.host or cfg.api.host, port=a.port or cfg.api.port, log_level="info")
+    elif a.cmd == "chat":
+        from .llm import agent
+        for ev in agent.run(conn, cfg, a.message, conversation_id=a.conversation, provider_name=a.provider):
+            if a.events:
+                print(json.dumps(ev, default=str)[:400])
+            elif ev["type"] == "routing":
+                print(f"[{ev['provider']} · {ev['model']}]", file=sys.stderr)
+            elif ev["type"] == "tool_call":
+                print(f"  → {ev['name']} {json.dumps(ev['arguments'])}", file=sys.stderr)
+            elif ev["type"] == "message":
+                print(ev["content"])
+            elif ev["type"] == "error":
+                print(f"error: {ev['message']}", file=sys.stderr)
+            elif ev["type"] == "done":
+                u = ev["usage"]
+                print(f"[{u['rounds']} rounds, {u['prompt_tokens']}+{u['completion_tokens']} tokens, {u['seconds']}s]", file=sys.stderr)
+    elif a.cmd == "models":
+        from .llm.provider import provider_status
+        _json(provider_status(cfg))
+    elif a.cmd == "profile":
+        from .llm import profile
+        print(profile.write_generated(conn, cfg) if a.generated_only else profile.load(conn, cfg, regenerate=True))
+    elif a.cmd == "brief":
+        from .services.brief import daily_brief
+        text = daily_brief(conn, cfg)
+        print(text)
+        if a.send:
+            from .notify import telegram
+            _json(telegram.send(cfg, text))
+    elif a.cmd == "mcp":
+        from . import mcp_server
+        conn.close()
+        if a.http:
+            mcp_server.run_http(cfg, a.readonly, "127.0.0.1", a.port)
+        else:
+            mcp_server.run_stdio(cfg, a.readonly)
+        return 0
     elif a.cmd == "plaid":
         from .connectors.plaid import PlaidConnector
         pc = PlaidConnector(cfg)

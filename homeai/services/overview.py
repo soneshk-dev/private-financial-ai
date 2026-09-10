@@ -12,7 +12,12 @@ from ..ledger.snapshots import series, snapshot_day
 def net_worth(conn: sqlite3.Connection, days: int = 365) -> dict[str, Any]:
     latest = conn.execute("SELECT * FROM snapshots_daily ORDER BY as_of DESC LIMIT 1").fetchone()
     if latest is None:
-        snap = snapshot_day(conn)
+        # First run: snapshot at the latest date we have data for (never earlier than today's data).
+        as_of = conn.execute("SELECT MAX(d) FROM (SELECT MAX(as_of) d FROM balances_daily UNION ALL"
+                             " SELECT MAX(as_of) FROM positions UNION ALL SELECT date('now'))").fetchone()[0]
+        conn.execute("BEGIN")
+        snapshot_day(conn, as_of)
+        conn.execute("COMMIT")
         latest = conn.execute("SELECT * FROM snapshots_daily ORDER BY as_of DESC LIMIT 1").fetchone()
     accounts = list_accounts(conn)
     by_class: dict[str, list[dict]] = {}

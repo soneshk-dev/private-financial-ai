@@ -97,13 +97,39 @@ class BitcoinConfig(BaseModel):
     gap_limit: int = 50
 
 
+class LlmProvider(BaseModel):
+    """An OpenAI-compatible local endpoint (vLLM, TabbyAPI, Ollama)."""
+    name: str
+    base_url: str
+    model: str = "auto"          # 'auto' = first model the server lists
+    api_key: str = "local"
+    timeout: int = 300
+    max_tokens: int = 4096
+
+
+class LlmConfig(BaseModel):
+    providers: list[LlmProvider] = [LlmProvider(name="ollama", base_url="http://127.0.0.1:11434/v1")]
+    default: str = "ollama"
+    fallback: str | None = None
+    max_iterations: int = 12
+    temperature: float = 0.2
+    history_messages: int = 30
+
+
+class TelegramConfig(BaseModel):
+    conf_file: str = "telegram.conf"
+
+
 class Config(BaseModel):
     private_dir: Path
     vault_dir: Path
     secrets_dir: Path = Path("~/.home-ai-secrets")
     timezone: str = "America/Chicago"
     default_entity: str = "personal"
+    profile_file: str = "profile.md"     # hand-written part of the context, in private_dir
     api: ApiConfig = ApiConfig()
+    llm: LlmConfig = LlmConfig()
+    telegram: TelegramConfig = TelegramConfig()
     manual_accounts: list[ManualAccount] = []
     account_overrides: list[AccountOverride] = []
     flow_rules: list[FlowRule] = []

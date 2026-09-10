@@ -33,6 +33,19 @@ flow_rules:
   - pattern: "OWNER DRAW"
     flow_type: transfer
 
+# Local model endpoints (OpenAI-compatible). No cloud providers.
+llm:
+  providers:
+    - { name: spark,  base_url: "http://spark.local:8888/v1", model: auto }
+    - { name: ollama, base_url: "http://127.0.0.1:11434/v1", model: "qwen3.5:35b-a3b-iq3xxs" }
+  default: spark
+  fallback: ollama
+  max_iterations: 12
+  temperature: 0.2
+
+telegram:
+  conf_file: telegram.conf         # TELEGRAM_BOT_TOKEN=..., TELEGRAM_CHAT_ID=...
+
 plaid:
   client_name: homeai
   products: [transactions]        # add "investments" once your Plaid account has it
