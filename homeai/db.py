@@ -16,7 +16,7 @@ def now_iso() -> str:
 def connect(db_path: str | Path) -> sqlite3.Connection:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), timeout=30, isolation_level=None)  # autocommit; use BEGIN explicitly
+    conn = sqlite3.connect(str(db_path), timeout=30, isolation_level=None, check_same_thread=False)  # autocommit; one connection per request, may cross threadpool threads
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
