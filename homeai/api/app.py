@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__
@@ -230,6 +233,20 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def link_page(connection_id: str | None = None):
         """Minimal Plaid Link page: new connection, or update mode for ?connection_id=."""
         return LINK_HTML.replace("__CONNECTION_ID__", connection_id or "")
+
+    # --- Front end (SvelteKit build in web/build): static files + SPA fallback ----
+    web_dir = Path(os.environ.get("HOMEAI_WEB_DIR") or Path(__file__).resolve().parents[2] / "web" / "build")
+    if web_dir.is_dir():
+        app.mount("/_app", StaticFiles(directory=web_dir / "_app"), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def spa(path: str):
+            if path.startswith("api/"):
+                raise HTTPException(404)
+            candidate = (web_dir / path).resolve()
+            if path and candidate.is_file() and str(candidate).startswith(str(web_dir.resolve())):
+                return FileResponse(candidate)
+            return FileResponse(web_dir / "index.html")
 
     return app
 

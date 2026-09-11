@@ -26,6 +26,10 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+# --- front end build artefacts ---
+web/node_modules/
+web/build/
+web/.svelte-kit/
 # --- editors / os ---
 .DS_Store
 .idea/
