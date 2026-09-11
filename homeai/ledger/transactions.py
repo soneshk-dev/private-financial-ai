@@ -31,12 +31,14 @@ def upsert_transaction(conn: sqlite3.Connection, *, source: str, source_txn_id: 
     is re-keyed to the posted id, keeping any user overrides, instead of a new
     row being added.
     """
-    if account_kind is None or entity is None:
-        row = conn.execute("SELECT kind, entity FROM accounts WHERE id = ?", (account_id,)).fetchone()
-        if row is None:
-            raise KeyError(f"unknown account {account_id}")
-        account_kind = account_kind or row["kind"]
-        entity = entity or row["entity"]
+    row = conn.execute("SELECT kind, entity, meta FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    if row is None:
+        raise KeyError(f"unknown account {account_id}")
+    account_kind = account_kind or row["kind"]
+    entity = entity or row["entity"]
+    since = (json.loads(row["meta"] or "{}") or {}).get("txn_since")
+    if since and posted_at < since:
+        return txn_id(source, source_txn_id), "skipped"   # before this account's cutover date
 
     cat = category
     rule_flow = None

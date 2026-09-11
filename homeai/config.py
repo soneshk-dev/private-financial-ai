@@ -60,7 +60,7 @@ class ManualAccount(BaseModel):
 class AccountOverride(BaseModel):
     """Force kind/entity/name/active on accounts matched by connector fields."""
     match: dict[str, Any]          # any of: source, source_account_id, institution, name_contains, mask, kind
-    set: dict[str, Any]            # any of: kind, entity, name, is_active
+    set: dict[str, Any]            # any of: kind, entity, name, is_active, txn_since (YYYY-MM-DD cutover)
 
 
 class FlowRule(BaseModel):

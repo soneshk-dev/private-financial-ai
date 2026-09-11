@@ -7,11 +7,13 @@ from homeai.connectors.bitcoin import parse_descriptor, is_descriptor
 
 
 def test_fina_parse_transactions_both_layouts():
-    new = ("0f9d0cf2-1111-4a2b-9c3d-abcdefabcdef,2026-08-31,DIVIDEND RECEIVED FIDELITY MMKT,,acct-x,459.33,other income,USD,,false,false\n"
-           "1f9d0cf2-1111-4a2b-9c3d-abcdefabcdef,2026-08-31,DIRECT DEBIT ATT PAYMENT (Cash),ATT,acct-x,-55,bills & utilities,USD,,false,false\n"
+    # ids are opaque tokens (not UUIDs); dates carry a time part
+    new = ("jZbDJ0ov73I5OROpqpAdiyw9KPZXmJiQrJkdD,2026-08-31T00:00:00.000Z,DIVIDEND RECEIVED FIDELITY MMKT,,acct-x,459.33,other income,USD,,false,false\n"
+           "rOJk9K4xnrho7d7n8nARhnjgxQoPK3UKpzjJE,2026-08-31T00:00:00.000Z,DIRECT DEBIT ATT PAYMENT (Cash),ATT,acct-x,-55,bills & utilities,USD,,false,false\n"
            "bad,row\n")
     rows = FinaConnector.parse_transactions(new)
     assert len(rows) == 2 and rows[0]["amount"] == 459.33 and rows[1]["merchant"] == "ATT" and rows[1]["date"] == "2026-08-31"
+    assert rows[0]["id"] == "jZbDJ0ov73I5OROpqpAdiyw9KPZXmJiQrJkdD"
     old = "2025-12-01,PAYCHECK,ACME,acct-y,5000,primary paycheck,USD,\n"
     rows = FinaConnector.parse_transactions(old)
     assert rows[0]["amount"] == 5000 and rows[0]["account_id"] == "acct-y" and len(rows[0]["id"]) == 32
@@ -24,6 +26,34 @@ def test_fina_balances_new_and_old_keys():
     assert [o["id"] for o in out] == ["a", "b"]
     assert asset_class_from_name("FIDELITY GOVERNMENT MONEY MARKET") == "cash"
     assert asset_class_from_name("ISHARES BITCOIN TRUST ETF") == "etf"
+
+
+def test_fina_legacy_rekey_and_txn_since(cfg, conn, seeded):
+    from homeai.connectors.fina import find_legacy_id
+    from homeai.ledger.accounts import set_locked
+    from homeai.ledger.transactions import txn_id, upsert_transaction
+    brok = seeded["brok"]
+    conn.execute("BEGIN")
+    # a row as the backfill wrote it (synthetic id) …
+    upsert_transaction(conn, source="fina", source_txn_id="fina_2026-09-01_acct_12.34_abcd1234", account_id=brok,
+                       posted_at="2026-09-01", amount=12.34, description="DIVIDEND RECEIVED X", category_raw="other income")
+    legacy = find_legacy_id(conn, brok, "2026-09-01", 12.34, "DIVIDEND RECEIVED X")
+    assert legacy == "fina_2026-09-01_acct_12.34_abcd1234"
+    # … arrives from the live feed under Fina's id → re-keyed, not duplicated
+    tid, status = upsert_transaction(conn, source="fina", source_txn_id="LIVEID123", account_id=brok, posted_at="2026-09-01",
+                                     amount=12.34, description="DIVIDEND RECEIVED X", category_raw="other income",
+                                     replaces_source_txn_id=legacy)
+    assert status == "replaced" and tid == txn_id("fina", "LIVEID123")
+    assert conn.execute("SELECT COUNT(*) FROM transactions WHERE description='DIVIDEND RECEIVED X'").fetchone()[0] == 1
+    # cutover date: rows before it are skipped
+    set_locked(conn, brok, txn_since="2026-09-10")
+    _, st = upsert_transaction(conn, source="fina", source_txn_id="OLD1", account_id=brok, posted_at="2026-09-05",
+                               amount=-5, description="OLD", category_raw="groceries")
+    _, st2 = upsert_transaction(conn, source="fina", source_txn_id="NEW1", account_id=brok, posted_at="2026-09-12",
+                                amount=-5, description="NEW", category_raw="groceries")
+    conn.execute("COMMIT")
+    assert st == "skipped" and st2 == "inserted"
+    assert conn.execute("SELECT COUNT(*) FROM transactions WHERE description IN ('OLD','NEW')").fetchone()[0] == 1
 
 
 def test_zerion_normalize_drops_receipts_and_signs_loans():

@@ -23,7 +23,7 @@ from ..ledger.transactions import upsert_transaction
 from .base import SyncResult, parse_kv_conf, store_raw
 
 BASE = "https://app.fina.money/api/resource/account"
-_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 KNOWN_SYMBOLS = {
     "ishares bitcoin trust": "IBIT", "fidelity wise origin bitcoin": "FBTC", "ishares gold trust": "IAU",
@@ -78,13 +78,14 @@ class FinaConnector:
     @staticmethod
     def parse_transactions(text: str) -> list[dict[str, Any]]:
         """Fina's CSV is headerless. New layout (2026): id,date,description,merchant,account_id,amount,
-        category,currency,tag,... Old layout: date,name,merchant,account,amount,category,currency,tag."""
+        category,currency,tag,... Old layout: date,name,merchant,account,amount,category,currency,tag.
+        The layout is detected by where the date sits (ids are opaque tokens, not UUIDs)."""
         out = []
         for row in csv.reader(io.StringIO(text)):
             if len(row) < 7:
                 continue
             try:
-                if len(row) >= 8 and _UUID.match(row[0] or ""):
+                if len(row) >= 8 and _DATE.match(row[1] or "") and not _DATE.match(row[0] or ""):
                     amount = float(row[5]) if row[5] else 0.0
                     rec = {"id": row[0], "date": row[1][:10], "name": row[2], "merchant": row[3] or None,
                            "account_id": row[4], "amount": amount, "category": row[6] or None,
@@ -156,14 +157,29 @@ class FinaConnector:
             if kind in cfg.fina.skip_kinds:
                 skipped += 1
                 continue
+            legacy = find_legacy_id(conn, aid, t["date"], t["amount"], t["name"])
             _, status = upsert_transaction(conn, source="fina", source_txn_id=t["id"], account_id=aid,
                                            posted_at=t["date"], amount=t["amount"], description=t["name"],
                                            merchant=t["merchant"] or t["name"], category_raw=t["category"],
-                                           currency=t["currency"], account_kind=kind, rules=rules)
+                                           currency=t["currency"], account_kind=kind, rules=rules,
+                                           replaces_source_txn_id=legacy)
             added += status == "inserted"
+            skipped += status == "skipped"
         result.detail.update({"transactions_added": added, "transactions_skipped": skipped})
         result.rows_written = len(accounts) + n_pos + added
         return result
+
+
+def find_legacy_id(conn: sqlite3.Connection, account_id: str, posted_at: str, amount: float,
+                   description: str | None) -> str | None:
+    """Rows imported from the previous app carry synthetic ids (``fina_<date>_...``).
+    When the live feed delivers the same transaction under Fina's own id, re-key
+    the legacy row instead of inserting a duplicate."""
+    row = conn.execute(
+        "SELECT source_txn_id FROM transactions WHERE source = 'fina' AND source_txn_id LIKE 'fina_%'"
+        " AND account_id = ? AND posted_at = ? AND ABS(amount - ?) < 0.005 AND COALESCE(description,'') = ?"
+        " LIMIT 1", (account_id, posted_at, float(amount), description or "")).fetchone()
+    return row["source_txn_id"] if row else None
 
 
 def _ticker_map(conn) -> dict[str, str]:
