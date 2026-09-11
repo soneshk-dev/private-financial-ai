@@ -1,0 +1,17 @@
+# ~/.config/systemd/user/homeai-mcp.service
+# homeai tools over MCP (streamable HTTP) for hermes-agent or any local MCP client.
+[Unit]
+Description=homeai MCP server (127.0.0.1:5011/mcp)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/pfa
+Environment=HOMEAI_PRIVATE_DIR=%h/pfa/private
+Environment=HOMEAI_VAULT_DIR=%h/homeai-vault
+ExecStart=%h/pfa/.venv/bin/homeai mcp --http --port 5011
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -97,9 +97,23 @@ def build_providers(cfg: Config) -> dict[str, OpenAICompatProvider]:
 
 def provider_status(cfg: Config) -> list[dict[str, Any]]:
     out = []
+    hermes_default = cfg.llm.backend == "hermes"
+    if hermes_default:
+        from .hermes import HermesBackend
+        h = HermesBackend(cfg)
+        ok = h.reachable()
+        model = None
+        if ok:
+            try:
+                model = h.model()
+            except ProviderError:
+                model = None
+        out.append({"name": "hermes", "base_url": cfg.llm.hermes_url, "reachable": ok, "model": model,
+                    "default": True, "fallback": False})
     for p in build_providers(cfg).values():
         ok = p.reachable()
         out.append({"name": p.name, "base_url": p.spec.base_url, "reachable": ok,
                     "model": (p.model() if ok else None) if p.spec.model == "auto" else p.spec.model,
-                    "default": p.name == cfg.llm.default, "fallback": p.name == cfg.llm.fallback})
+                    "default": (not hermes_default) and p.name == cfg.llm.default,
+                    "fallback": p.name == cfg.llm.fallback or (hermes_default and p.name == cfg.llm.default)})
     return out

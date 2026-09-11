@@ -83,15 +83,19 @@ def get_conversation(conn: sqlite3.Connection, cid: str) -> dict[str, Any] | Non
 # ---------------------------------------------------------------- the loop
 def run(conn: sqlite3.Connection, cfg: Config, user_message: str, conversation_id: str | None = None,
         provider_name: str | None = None, providers: dict[str, OpenAICompatProvider] | None = None,
-        allow_mutating: bool = True) -> Iterator[dict[str, Any]]:
+        allow_mutating: bool = True, hermes=None) -> Iterator[dict[str, Any]]:
+    """Run one chat turn. ``provider_name`` selects a builtin provider, or "hermes"."""
+    use_hermes = (provider_name == "hermes") or (provider_name is None and cfg.llm.backend == "hermes")
     providers = providers or build_providers(cfg)
-    order = [n for n in (provider_name or cfg.llm.default, cfg.llm.fallback) if n and n in providers]
-    if not order:
+    order = [n for n in ((None if use_hermes else provider_name) or cfg.llm.default, cfg.llm.fallback)
+             if n and n in providers]
+    if not order and not use_hermes:
         yield {"type": "error", "message": f"no such provider: {provider_name or cfg.llm.default}"}
         return
 
     conn.execute("BEGIN")
-    cid = conversation_id or new_conversation(conn, title=user_message[:80], provider=order[0])
+    cid = conversation_id or new_conversation(conn, title=user_message[:80],
+                                              provider="hermes" if use_hermes else order[0])
     if conversation_id and not conn.execute("SELECT 1 FROM conversations WHERE id = ?", (cid,)).fetchone():
         conn.execute("ROLLBACK")
         yield {"type": "error", "message": f"unknown conversation {cid}"}
@@ -103,6 +107,35 @@ def run(conn: sqlite3.Connection, cfg: Config, user_message: str, conversation_i
     messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt(conn, cfg)}]
     messages += history(conn, cid, cfg.llm.history_messages)[:-1]  # everything before this user turn
     messages.append({"role": "user", "content": user_message})
+
+    if use_hermes:
+        from .hermes import HermesBackend
+        backend = hermes or HermesBackend(cfg)
+        try:
+            model = backend.model()
+            yield {"type": "routing", "provider": "hermes", "model": model}
+            answer = ""
+            for ev in backend.stream(messages, session_id=cid):
+                if ev["type"] == "message":
+                    answer = ev["content"]
+                    conn.execute("BEGIN")
+                    add_message(conn, cid, "assistant", answer)
+                    conn.execute("UPDATE conversations SET model = ?, provider = 'hermes' WHERE id = ?",
+                                 (ev.get("model") or model, cid))
+                    conn.execute("COMMIT")
+                elif ev["type"] == "tool_call":
+                    conn.execute("BEGIN")
+                    add_message(conn, cid, "assistant", None, tool_calls=[{"id": ev["id"], "type": "function",
+                                 "function": {"name": ev["name"], "arguments": json.dumps(ev["arguments"])}}])
+                    conn.execute("COMMIT")
+                yield ev
+            return
+        except ProviderError as e:
+            if not (cfg.llm.hermes_fallback_builtin and order):
+                yield {"type": "error", "message": str(e)}
+                return
+            yield {"type": "status", "message": f"{e}; falling back to the builtin loop"}
+
     tools = registry.openai_tools(include_mutating=allow_mutating)
 
     provider = None

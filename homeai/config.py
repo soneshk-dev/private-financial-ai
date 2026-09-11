@@ -108,12 +108,26 @@ class LlmProvider(BaseModel):
 
 
 class LlmConfig(BaseModel):
+    # backend "builtin": homeai's own loop over `providers`.
+    # backend "hermes": relay to a hermes-agent gateway that consumes homeai's MCP server;
+    #                   `providers` then only serve as the emergency fallback.
+    backend: Literal["builtin", "hermes"] = "builtin"
+    hermes_url: str = "http://127.0.0.1:9319/v1"
+    hermes_timeout: int = 600
+    hermes_fallback_builtin: bool = True
     providers: list[LlmProvider] = [LlmProvider(name="ollama", base_url="http://127.0.0.1:11434/v1")]
     default: str = "ollama"
     fallback: str | None = None
     max_iterations: int = 12
     temperature: float = 0.2
     history_messages: int = 30
+
+
+class AccessConfig(BaseModel):
+    """Cloudflare Access JWT verification (off unless team_domain and aud are set).
+    When on, every request must carry a valid Cf-Access-Jwt-Assertion header."""
+    team_domain: str | None = None      # e.g. "example" for example.cloudflareaccess.com
+    aud: str | None = None              # the Access application's Application Audience tag
 
 
 class TelegramConfig(BaseModel):
@@ -130,6 +144,7 @@ class Config(BaseModel):
     api: ApiConfig = ApiConfig()
     llm: LlmConfig = LlmConfig()
     telegram: TelegramConfig = TelegramConfig()
+    access: AccessConfig = AccessConfig()
     manual_accounts: list[ManualAccount] = []
     account_overrides: list[AccountOverride] = []
     flow_rules: list[FlowRule] = []

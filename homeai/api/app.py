@@ -51,6 +51,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     app.state.cfg = cfg
     with connect(cfg.db_path) as c:
         migrate(c)
+    if cfg.access.team_domain and cfg.access.aud:
+        from .access import AccessMiddleware
+        app.add_middleware(AccessMiddleware, cfg=cfg)
 
     def db():
         conn = connect(cfg.db_path)
