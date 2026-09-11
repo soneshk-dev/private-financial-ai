@@ -199,13 +199,34 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from ..llm import agent
 
         def gen():
-            conn = connect(cfg.db_path)
-            try:
-                for ev in agent.run(conn, cfg, body.message, conversation_id=body.conversation_id,
-                                    provider_name=body.provider, allow_mutating=body.allow_mutating):
-                    yield f"event: {ev['type']}\ndata: {json.dumps(ev, default=str)}\n\n"
-            finally:
-                conn.close()
+            # Run the turn on a worker thread and emit an SSE comment every 15 s while
+            # waiting, so reverse proxies (Cloudflare's 100 s idle limit) keep the stream open.
+            import queue
+            import threading
+            q: queue.Queue = queue.Queue()
+
+            def work():
+                conn = connect(cfg.db_path)
+                try:
+                    for ev in agent.run(conn, cfg, body.message, conversation_id=body.conversation_id,
+                                        provider_name=body.provider, allow_mutating=body.allow_mutating):
+                        q.put(ev)
+                except Exception as e:  # noqa: BLE001
+                    q.put({"type": "error", "message": f"{type(e).__name__}: {e}"})
+                finally:
+                    conn.close()
+                    q.put(None)
+
+            threading.Thread(target=work, daemon=True).start()
+            while True:
+                try:
+                    ev = q.get(timeout=15)
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                if ev is None:
+                    break
+                yield f"event: {ev['type']}\ndata: {json.dumps(ev, default=str)}\n\n"
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
