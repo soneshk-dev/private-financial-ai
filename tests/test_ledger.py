@@ -33,6 +33,8 @@ def test_infer_flow_rules():
     assert f("Transfers > Credit Card Payment", -2500, "checking", "ONLINE PAYMENT TO CARD") == "transfer"
     assert f("Financial Services > Credit Card Payment", -2500, "checking", "PAYMENT") == "transfer"
     assert f("Uncategorized", 2500, "credit_card", "PAYMENT THANK YOU") == "transfer"
+    assert f("Income > Other Income", 12843, "credit_card", "AUTOMATIC PAYMENT - THANK") == "transfer"
+    assert f("Income > Other Income", 14130, "credit_card", "PAYMENT MADE BY ACCOUNT ENDING I") == "transfer"
     assert f("Financial Services > Mortgage Payment", -2200, "checking", "MORTGAGE") == "loan_payment"
     assert f("Uncategorized", -2200, "mortgage", "PAYMENT") == "loan_payment"
     assert f("Financial Services > Tax Payment", -1500, "checking", "IRS USATAXPYMT") == "tax"

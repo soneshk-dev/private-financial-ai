@@ -35,21 +35,30 @@ def reserves(conn: sqlite3.Connection, cfg: Config) -> tuple[float, list[dict[st
 
 
 def burn_rate(conn: sqlite3.Connection, cfg: Config, today: date) -> dict[str, Any]:
-    start = _month_add(today.replace(day=1), -cfg.runway.burn_months).isoformat()
-    end = today.replace(day=1).isoformat()   # full months only
-    r = conn.execute("""
-        SELECT COUNT(DISTINCT substr(posted_at,1,7)) AS months,
+    """Spending: mean over the window. Loan payments: median month (a one-off principal
+    paydown must not become a recurring cost). Taxes: mean over the trailing 12 months
+    (estimated payments are quarterly)."""
+    first = today.replace(day=1)
+    start = _month_add(first, -cfg.runway.burn_months).isoformat()
+    end = first.isoformat()   # full months only
+    rows = conn.execute("""
+        SELECT substr(posted_at,1,7) AS m,
                SUM(CASE WHEN flow IN ('expense','fee','refund') THEN amount ELSE 0 END) AS spending,
-               SUM(CASE WHEN flow = 'loan_payment' THEN amount ELSE 0 END) AS loans,
-               SUM(CASE WHEN flow = 'tax' THEN amount ELSE 0 END) AS taxes
-        FROM transactions_v WHERE entity = ? AND pending = 0 AND posted_at >= ? AND posted_at < ?""",
-                     (cfg.runway.entity, start, end)).fetchone()
-    months = max(int(r["months"] or 0), 1)
-    spending = -float(r["spending"] or 0) / months
-    loans = -float(r["loans"] or 0) / months
-    taxes = -float(r["taxes"] or 0) / months
+               SUM(CASE WHEN flow = 'loan_payment' THEN amount ELSE 0 END) AS loans
+        FROM transactions_v WHERE entity = ? AND pending = 0 AND posted_at >= ? AND posted_at < ?
+        GROUP BY m ORDER BY m""", (cfg.runway.entity, start, end)).fetchall()
+    months = max(len(rows), 1)
+    spending = -sum(r["spending"] or 0 for r in rows) / months
+    loans_sorted = sorted(-(r["loans"] or 0) for r in rows) or [0.0]
+    loans = loans_sorted[len(loans_sorted) // 2] if len(loans_sorted) % 2 else (
+        loans_sorted[len(loans_sorted) // 2 - 1] + loans_sorted[len(loans_sorted) // 2]) / 2
+    tax_start = _month_add(first, -12).isoformat()
+    taxes = -float(conn.execute("SELECT COALESCE(SUM(amount),0) FROM transactions_v WHERE entity = ? AND pending = 0"
+                                " AND flow = 'tax' AND posted_at >= ? AND posted_at < ?",
+                                (cfg.runway.entity, tax_start, end)).fetchone()[0] or 0) / 12
     return {"months_averaged": months, "spending": round(spending, 2), "loan_payments": round(loans, 2),
-            "taxes": round(taxes, 2), "total": round(spending + loans + taxes, 2), "window": [start, end]}
+            "taxes": round(taxes, 2), "total": round(spending + loans + taxes, 2), "window": [start, end],
+            "method": "spending mean, loan payments median, taxes 12-month mean"}
 
 
 def incomes(conn: sqlite3.Connection, cfg: Config, today: date) -> list[dict[str, Any]]:

@@ -228,6 +228,7 @@ _DESC_RULES = [
 ]
 _TRANSFER_DESC = re.compile(r"\b(TRANSFER|XFER|ZELLE|VENMO|ONLINE PAYMENT|AUTOPAY|PAYMENT THANK YOU|"
                             r"PAYMENT - THANK YOU|MOBILE PAYMENT|ACH PMT|EPAY)\b", re.I)
+_CARD_PAYMENT = re.compile(r"\b(PAYMENT|AUTOPAY|THANK YOU|THANK|ONLINE PMT|MOBILE PMT)\b", re.I)
 _LIABILITY_KINDS = {"mortgage", "heloc", "loan", "student_loan"}
 _EXPENSE_L1 = {"Food & Dining", "Shopping", "Transportation", "Entertainment", "Health & Wellness",
                "Home & Housing", "Utilities", "Education", "Business", "Personal Care", "Travel"}
@@ -253,6 +254,10 @@ def infer_flow(category: str | None, amount: float, account_kind: str = "checkin
         if amount < 0 and re.search(r"INTEREST", desc, re.I):
             return "fee"
         return "loan_payment"
+
+    # 1b. payments received on a credit card are transfers from the household's own cash
+    if account_kind == "credit_card" and amount > 0 and _CARD_PAYMENT.search(desc):
+        return "transfer"
 
     # 2. strong description signals
     for pat, flow in _DESC_RULES:

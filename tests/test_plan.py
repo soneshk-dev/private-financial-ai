@@ -55,7 +55,7 @@ def test_runway_projection(cfg, conn, seeded):
     assert r["series"][0]["month"] == "2026-09" and len(r["series"]) == cfg.runway.horizon_months + 1
     dec = next(s for s in r["series"] if s["month"] == "2026-12")
     assert dec["income"] == 1000                     # salary ended in November
-    assert r["burn"]["months_averaged"] >= 1 and r["burn"]["total"] > 0
+    assert r["burn"]["months_averaged"] >= 1 and r["burn"]["total"] > 0 and "median" in r["burn"]["method"]
     assert r["months_no_income"] == round(5000 / r["burn"]["total"], 1)
 
 
@@ -72,7 +72,7 @@ def test_federal_brackets_and_estimate(cfg, conn, seeded):
     assert e["safe_harbor"]["required_payments"] == 22000 and e["safe_harbor"]["met"] is False
     assert e["schedule"] and e["schedule"][0]["due"] == "2027-01-15"   # after Sep 15 on TODAY=Sep 28
     assert e["income"]["agi"] == 16000 + 43.29 + 205000   # business income is not personal AGI here (no entity synced)
-    assert e["federal"]["marginal_rate"] == 0.24 and e["roth_headroom_in_bracket"] == round(403550 - e["taxable_income"], 2)
+    assert e["federal"]["marginal_rate"] == 0.22 and e["roth_headroom_in_bracket"] == round(211400 - e["taxable_income"], 2)
     assert e["federal"]["remaining"] > 0 and e["schedule"][0]["federal"] == e["federal"]["remaining"]
 
 

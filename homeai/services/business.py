@@ -13,6 +13,7 @@ from ..ledger.classify import INCOME_FLOWS, SPENDING_FLOWS
 
 _INC = ",".join(f"'{f}'" for f in INCOME_FLOWS)
 _SP = ",".join(f"'{f}'" for f in SPENDING_FLOWS)
+INTERNAL = re.compile(r"CORE ACCOUNT|SWEEP|REINVEST|FDIC|withdrawal|FIDELITY|VANGUARD|MMKT|MONEY MARKET", re.I)
 BUSINESSY = re.compile(r"business|consult|legal|software|saas|design|domain|hosting|cloud|advertis|marketing|"
                        r"payroll|contractor|invoice|llc|inc\b", re.I)
 
@@ -91,7 +92,7 @@ def review_queue(conn: sqlite3.Connection, months: int = 6, min_amount: float = 
     """Expenses on the personal entity that look like business spend, or large
     unexplained outflows, so they can be assigned to an entity."""
     rows = conn.execute(f"""
-        SELECT id, posted_at, account_name, amount, description, merchant, category, flow, entity
+        SELECT id, posted_at, account_name, account_kind, amount, description, merchant, category, flow, entity
         FROM transactions_v
         WHERE entity = 'personal' AND pending = 0 AND flow IN ({_SP}, 'transfer', 'unknown')
           AND posted_at >= date('now', ?) AND amount <= -?
@@ -104,8 +105,10 @@ def review_queue(conn: sqlite3.Connection, months: int = 6, min_amount: float = 
             reason = "business-looking merchant or category"
         elif r["flow"] == "unknown":
             reason = "unclassified"
-        elif -r["amount"] >= 5000 and r["flow"] == "transfer" and not conn.execute(
-                "SELECT 1 FROM transactions WHERE id = ? AND transfer_group IS NOT NULL", (r["id"],)).fetchone():
+        elif (-r["amount"] >= 5000 and r["flow"] == "transfer" and not INTERNAL.search(text)
+              and r["account_kind"] in ("checking", "savings", "money_market", "cash_mgmt", "credit_card")
+              and not conn.execute("SELECT 1 FROM transactions WHERE id = ? AND transfer_group IS NOT NULL",
+                                   (r["id"],)).fetchone()):
             reason = "large unpaired transfer"
         if reason:
             d = dict(r)
