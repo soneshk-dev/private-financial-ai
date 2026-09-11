@@ -1,11 +1,11 @@
 ---
 name: homeai-financial
-description: Answer questions about the household's finances using the homeai MCP tools (mcp_homeai_*). Use for any question about balances, net worth, spending, cash flow, budgets, transactions, positions, crypto, or data freshness.
+description: Answer questions about the household's finances using the homeai MCP tools (mcp__homeai__*). Use for any question about balances, net worth, spending, cash flow, budgets, transactions, positions, crypto, or data freshness.
 ---
 
 # homeai financial data
 
-## Tools (mcp_homeai_*)
+## Tools (mcp__homeai__*)
 
 | Tool | Use it for |
 |---|---|

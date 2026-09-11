@@ -9,6 +9,7 @@ chat events, so the UI does not care which harness answered.
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any, Iterable, Iterator
 
@@ -17,7 +18,7 @@ import httpx
 from ..config import Config
 from .provider import ProviderError
 
-TOOL_PREFIX = "mcp_homeai_"
+TOOL_PREFIX = re.compile(r"^mcp_{1,2}homeai_{1,2}")   # hermes names MCP tools mcp__<server>__<tool>
 
 
 def parse_sse(lines: Iterable[str]) -> Iterator[dict[str, Any]]:
@@ -49,7 +50,7 @@ def parse_sse(lines: Iterable[str]) -> Iterator[dict[str, Any]]:
             continue
         if event_name == "hermes.tool.progress":
             name = str(obj.get("tool") or "")
-            short = name[len(TOOL_PREFIX):] if name.startswith(TOOL_PREFIX) else name
+            short = TOOL_PREFIX.sub("", name)
             if obj.get("status") == "running":
                 yield {"type": "tool_call", "id": obj.get("toolCallId"), "name": short,
                        "arguments": {"_label": obj.get("label")}}
