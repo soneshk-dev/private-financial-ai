@@ -132,6 +132,7 @@ def run(conn: sqlite3.Connection, cfg: Config, user_message: str, conversation_i
         total_usage["rounds"] += 1
         if result.reasoning:
             yield {"type": "reasoning", "content": result.reasoning[:2000]}
+        total_usage["seconds"] = round(total_usage["seconds"], 1)
         if not result.tool_calls:
             conn.execute("BEGIN")
             add_message(conn, cid, "assistant", result.content, usage=total_usage)

@@ -15,11 +15,23 @@ export const withAlpha = (hex: string, a: number) => {
 };
 
 const fmtMoney = (v: number) => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
-const compactTick = (v: number) => {
+/** Axis tick formatter whose precision follows the tick step, so neighbouring ticks never collide. */
+const compactTick = (v: number, step = 0) => {
   const a = Math.abs(v), s = v < 0 ? '-' : '';
-  if (a >= 1e6) return `${s}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${s}$${Math.round(a / 1e3)}K`;
+  if (a >= 1e6 || (a === 0 && step >= 1e6)) {
+    const d = step >= 1e6 ? 0 : step >= 1e5 ? 1 : step >= 1e4 ? 2 : 3;
+    return `${s}$${(a / 1e6).toFixed(d)}M`;
+  }
+  if (a >= 1e3 || (a === 0 && step >= 1e3)) {
+    const d = step >= 1e3 ? 0 : 1;
+    return `${s}$${(a / 1e3).toFixed(d)}K`;
+  }
   return `${s}$${a}`;
+};
+const tickCallback = function (this: any, v: any) {
+  const ticks = this.getTicks?.() ?? [];
+  const step = ticks.length > 1 ? Math.abs(ticks[1].value - ticks[0].value) : 0;
+  return compactTick(Number(v), step);
 };
 
 export function baseOptions(): any {
@@ -39,7 +51,7 @@ export function baseOptions(): any {
     },
     scales: {
       x: { grid: { display: false }, border: { color: axis }, ticks: { color: muted, maxRotation: 0, autoSkip: true, font: { size: 11 } } },
-      y: { grid: { color: grid, lineWidth: 1, drawTicks: false }, border: { display: false }, ticks: { color: muted, callback: (v: any) => compactTick(Number(v)), font: { size: 11 }, maxTicksLimit: 6 } },
+      y: { grid: { color: grid, lineWidth: 1, drawTicks: false }, border: { display: false }, ticks: { color: muted, callback: tickCallback, font: { size: 11 }, maxTicksLimit: 6 } },
     },
   };
 }

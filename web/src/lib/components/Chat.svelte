@@ -74,7 +74,7 @@
     }
   }
 
-  function onKey(e: KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey) send(e); }
+  function onKey(e: KeyboardEvent) { if ((e.key === 'Enter' || e.code === 'Enter') && !e.shiftKey) send(e); }
 </script>
 
 <button class="chat-toggle" onclick={() => (open = !open)} title="Chat with your ledger" aria-label="Toggle chat">💬</button>

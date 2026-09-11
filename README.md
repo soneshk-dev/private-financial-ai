@@ -31,6 +31,11 @@ Not financial advice. No cloud. No telemetry.
 - **MCP server** exposing the same tools to Claude Code or any MCP client
   (`homeai mcp`, stdio or streamable HTTP, optional read-only mode).
 - **Daily brief** over Telegram, computed deterministically from the ledger.
+- **Dashboards.** A SvelteKit single-page app (`web/`) served by the API:
+  overview with net worth over time, cash flow, spending with budgets and
+  inline overrides, transactions, portfolio with allocation and Aave health,
+  accounts and connector status, and a chat drawer over the local model.
+  Charts follow a validated light/dark palette and thin-mark conventions.
 
 ## Layout
 
@@ -85,7 +90,10 @@ homeai models           # which local endpoints are reachable
 homeai chat "how much did I spend on restaurants last month?"
 homeai brief --send     # Telegram daily brief (secrets_dir/telegram.conf)
 homeai mcp              # MCP over stdio:  claude mcp add homeai -- ~/pfa/.venv/bin/homeai mcp
+scripts/build-web.sh    # build the dashboards into web/build (needs Node 22); homeai serve then serves them at /
 ```
+
+Front-end development: `cd web && npm run dev` (Vite proxies `/api` to the running API on port 5010).
 
 Run tests with `pytest`.
 

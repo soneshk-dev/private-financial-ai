@@ -47,7 +47,7 @@
 </div>
 
 <div class="grid kpis" class:loading>
-  <StatTile label="Net worth" value={nw?.net_worth} delta={nw?.change ?? null} deltaLabel="over {days} days" hero />
+  <StatTile label="Net worth" value={nw?.net_worth} delta={nw?.change ?? null} deltaLabel={nw?.series?.length ? `since ${nw.series[0].as_of}` : ''} hero />
   <StatTile label="Assets" value={nw?.assets} />
   <StatTile label="Debt" value={nw?.liabilities} sub="cards, mortgage, HELOC" />
   <StatTile label="This month spending" value={thisCf ? -thisCf.spending : null} sub={thisCf ? `income ${compact(thisCf.income)}` : ''} />

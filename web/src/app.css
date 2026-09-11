@@ -76,7 +76,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .page-head h1 { font-size: 22px; font-weight: 650; margin: 0; }
 .page-head .sub { color: var(--ink-2); font-size: 14px; }
 .filters { display: flex; gap: 8px; align-items: center; margin: 0 0 18px; flex-wrap: wrap; }
-.filters select, .filters input, .filters button { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+.filters select, .filters input, .filters button { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; max-width: 320px; }
 .filters .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; }
 .filters .chip.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 

@@ -41,7 +41,7 @@
 {/if}
 
 {#if pos}
-  {#each pos.accounts as a}
+  {#each [...pos.accounts].sort((x, y) => y.value - x.value) as a}
     <div class="card" style="margin-top:16px" class:loading>
       <div class="h2row"><h2>{a.name} <span class="muted">· {KIND_LABEL[a.kind] ?? a.kind}{a.institution ? ` · ${a.institution}` : ''}</span></h2><span>{money(a.value)}</span></div>
       <table class="data">
