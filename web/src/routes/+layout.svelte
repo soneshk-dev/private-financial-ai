@@ -10,7 +10,7 @@
   let health: Health | null = $state(null);
   const links = [
     ['/', 'Overview'], ['/cashflow', 'Cash flow'], ['/spending', 'Spending'], ['/transactions', 'Transactions'],
-    ['/portfolio', 'Portfolio'], ['/accounts', 'Accounts'],
+    ['/portfolio', 'Portfolio'], ['/plan', 'Plan'], ['/business', 'Business'], ['/accounts', 'Accounts'],
   ];
   onMount(async () => { try { health = await api.health(); } catch {} });
   const issues = $derived(health ? health.connectors.filter((c) => c.status === 'error').length + health.connections.filter((c) => !['active', 'removed'].includes(c.status)).length : 0);

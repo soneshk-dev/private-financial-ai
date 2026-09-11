@@ -52,6 +52,16 @@ def main(argv: list[str] | None = None) -> int:
     mc.add_argument("--http", action="store_true")
     mc.add_argument("--port", type=int, default=5011)
     mc.add_argument("--readonly", action="store_true")
+    sub.add_parser("runway", help="reserves, burn, incomes and the projection")
+    sub.add_parser("tax", help="tax estimate for the configured year")
+    sub.add_parser("goals", help="goal progress")
+    bz = sub.add_parser("business", help="entity P&L summary or one entity's monthly P&L")
+    bz.add_argument("--entity")
+    bz.add_argument("--months", type=int, default=12)
+    sub.add_parser("review", help="transactions that may belong to a business")
+    al = sub.add_parser("alerts", help="evaluate alerts")
+    al.add_argument("--send", action="store_true")
+    rt = sub.add_parser("retag", help="apply entity rules to all transactions")
     pl = sub.add_parser("plaid", help="Plaid helpers")
     pls = pl.add_subparsers(dest="plaid_cmd", required=True)
     plt = pls.add_parser("link-token")
@@ -162,6 +172,45 @@ def main(argv: list[str] | None = None) -> int:
         if a.send:
             from .notify import telegram
             _json(telegram.send(cfg, text))
+    elif a.cmd == "runway":
+        from .services.runway import project
+        r = project(conn, cfg)
+        print(f"reserve {r['reserve']:,.0f}  burn {r['burn']['total']:,.0f}/mo  net now {r['net_monthly_now']:,.0f}/mo"
+              f"  no-income runway {r['months_no_income']} mo  cliff {r['cliff_month'] or 'none in horizon'}"
+              f"  reserve@horizon {r['reserve_at_horizon']:,.0f}")
+        for i in r["incomes"]:
+            print(f"  income {i['name']:<14} {i['monthly']:>10,.0f}/mo  until {i['until'] or 'open'}  (observed {i['observed_monthly']:,.0f}, {i['matches']} rows)")
+        for s in r["series"][::3]:
+            print(f"  {s['month']}  reserve {s['reserve']:>12,.0f}  income {s['income']:>9,.0f}")
+    elif a.cmd == "tax":
+        from .services.taxes import estimate
+        _json(estimate(conn, cfg))
+    elif a.cmd == "goals":
+        from .services.goals import progress, sync_goals
+        conn.execute("BEGIN"); sync_goals(conn, cfg); conn.execute("COMMIT")
+        for g in progress(conn):
+            pct = f"{g['pct']*100:.0f}%" if g["pct"] is not None else "-"
+            print(f"{g['name']:<28} {g['kind']:<8} current {g['current']:>12,.0f}  target {g['target_amount'] or 0:>12,.0f}"
+                  f"  {pct:>5}  months_left {g['months_left']}  needed/mo {g['needed_monthly']}")
+    elif a.cmd == "business":
+        from .services.business import pnl, summary, sync_entities
+        conn.execute("BEGIN"); sync_entities(conn, cfg); conn.execute("COMMIT")
+        _json(pnl(conn, a.entity, a.months) if a.entity else summary(conn, a.months))
+    elif a.cmd == "review":
+        from .services.business import review_queue
+        for t in review_queue(conn):
+            print(f"{t['posted_at']}  {t['amount']:>10,.0f}  {(t['merchant'] or t['description'] or '')[:34]:<34} {t['category'] or '':<34} {t['reason']}  {t['id']}")
+    elif a.cmd == "alerts":
+        from .services.alerts import evaluate, send_new
+        found = evaluate(conn, cfg)
+        for x in found:
+            print(f"- {x['text']}")
+        if a.send:
+            _json(send_new(conn, cfg, found))
+    elif a.cmd == "retag":
+        from .services.business import apply_entity_rules, sync_entities
+        conn.execute("BEGIN"); sync_entities(conn, cfg); n = apply_entity_rules(conn, cfg); conn.execute("COMMIT")
+        _json({"retagged": n})
     elif a.cmd == "mcp":
         from . import mcp_server
         conn.close()

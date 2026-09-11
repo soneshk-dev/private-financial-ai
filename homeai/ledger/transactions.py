@@ -83,10 +83,11 @@ def remove_transaction(conn: sqlite3.Connection, source: str, source_txn_id: str
 
 
 def set_override(conn: sqlite3.Connection, tid: str, *, flow_type: str | None = None,
-                 category: str | None = None) -> None:
+                 category: str | None = None, entity: str | None = None) -> None:
     conn.execute("UPDATE transactions SET flow_type_override = COALESCE(?, flow_type_override),"
-                 " category_override = COALESCE(?, category_override), updated_at = ? WHERE id = ?",
-                 (flow_type, category, now_iso(), tid))
+                 " category_override = COALESCE(?, category_override),"
+                 " entity_override = COALESCE(?, entity_override), updated_at = ? WHERE id = ?",
+                 (flow_type, category, entity, now_iso(), tid))
 
 
 def reclassify_all(conn: sqlite3.Connection, rules: list[Rule] | None = None) -> int:

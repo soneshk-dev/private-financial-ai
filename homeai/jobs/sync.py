@@ -39,16 +39,25 @@ def run_sync(conn: sqlite3.Connection, cfg: Config, only: list[str] | None = Non
             continue
         results.append(run_connector(c, conn, cfg, as_of))
 
+    from ..services.business import apply_entity_rules, sync_entities
+    from ..services.goals import sync_goals
     conn.execute("BEGIN")
     apply_overrides(conn, cfg)
+    sync_entities(conn, cfg)
+    retagged = apply_entity_rules(conn, cfg, since=(date.today() - timedelta(days=120)).isoformat())
+    sync_goals(conn, cfg)
     pairs = pair_transfers(conn, since=(date.today() - timedelta(days=120)).isoformat())
     snap = snapshot_day(conn, as_of)
     pruned = prune_raw(conn, keep_days=60)
     conn.execute("COMMIT")
-    try:  # refresh the model context file; never fail the sync over it
+    alerts_out: dict[str, Any] = {}
+    try:  # refresh the model context file and evaluate alerts; never fail the sync over them
         from ..llm.profile import write_generated
         write_generated(conn, cfg)
-    except Exception:  # noqa: BLE001
-        pass
+        from ..services.alerts import evaluate, send_new
+        alerts_out = send_new(conn, cfg, evaluate(conn, cfg))
+    except Exception as e:  # noqa: BLE001
+        alerts_out = {"error": repr(e)}
     return {"as_of": as_of, "connectors": [r.as_dict() for r in results], "transfer_pairs": pairs,
+            "entity_retagged": retagged, "alerts": alerts_out,
             "snapshot": {k: snap[k] for k in ("assets", "liabilities", "net_worth")}, "raw_pruned": pruned}

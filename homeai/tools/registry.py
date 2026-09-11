@@ -11,7 +11,7 @@ from ..config import Config
 from ..db import connect
 from ..ledger.accounts import set_locked
 from ..ledger.transactions import set_override
-from ..services import cashflow, health, overview, portfolio
+from ..services import business, cashflow, goals, health, overview, portfolio, runway, taxes
 
 Handler = Callable[[sqlite3.Connection, Config, dict[str, Any]], Any]
 
@@ -71,9 +71,9 @@ def _txn_override(conn, cfg, args) -> dict[str, Any]:
     if not conn.execute("SELECT 1 FROM transactions WHERE id = ?", (tid,)).fetchone():
         return {"error": f"unknown transaction {tid}"}
     conn.execute("BEGIN")
-    set_override(conn, tid, flow_type=args.get("flow_type"), category=args.get("category"))
+    set_override(conn, tid, flow_type=args.get("flow_type"), category=args.get("category"), entity=args.get("entity"))
     conn.execute("COMMIT")
-    row = conn.execute("SELECT id, description, amount, flow, category FROM transactions_v WHERE id = ?", (tid,)).fetchone()
+    row = conn.execute("SELECT id, description, amount, flow, category, entity FROM transactions_v WHERE id = ?", (tid,)).fetchone()
     return dict(row)
 
 
@@ -140,9 +140,25 @@ TOOLS: list[Tool] = [
          _obj({"query": {"type": "string"}, "limit": {"type": "integer", "default": 200}}, ["query"]), run_sql),
     Tool("get_daily_brief", "The daily briefing text (yesterday's expenses, month-to-date vs budget, net worth change,"
          " data issues).", _obj(), _brief),
-    Tool("set_transaction_override", "Correct a transaction's flow_type and/or category. Overrides persist across syncs.",
-         _obj({"transaction_id": {"type": "string"}, "flow_type": {"type": "string"}, "category": {"type": "string"}},
-              ["transaction_id"]), _txn_override, mutating=True),
+    Tool("get_business", "Entities (personal and each business) with a P&L summary, and per-entity monthly P&L when"
+         " `entity` is given.", _obj({"entity": {"type": "string"}, "months": {"type": "integer", "default": 12}}),
+         lambda conn, cfg, a: (business.pnl(conn, a["entity"], int(a.get("months") or 12)) if a.get("entity")
+                               else business.summary(conn, int(a.get("months") or 12)))),
+    Tool("get_review_queue", "Transactions on personal accounts that look like business activity or large unexplained"
+         " outflows, to be assigned an entity with set_transaction_override.", _obj({"months": {"type": "integer", "default": 6}}),
+         lambda conn, cfg, a: business.review_queue(conn, int(a.get("months") or 6))),
+    Tool("get_runway", "Liquid reserves, burn rate, expected incomes (with end dates) and a month-by-month projection"
+         " of reserves; includes the month reserves would go negative, if any.", _obj(),
+         lambda conn, cfg, a: runway.project(conn, cfg)),
+    Tool("get_tax_estimate", "Estimated federal and state tax for the configured year from ledger income, payments made,"
+         " remaining balance, safe-harbour test, quarterly schedule and Roth-conversion headroom. An estimate with"
+         " listed caveats, not advice.", _obj(), lambda conn, cfg, a: taxes.estimate(conn, cfg)),
+    Tool("get_goals", "Goals with current amount, target, percent complete, months left and needed monthly saving.",
+         _obj(), lambda conn, cfg, a: goals.progress(conn)),
+    Tool("set_transaction_override", "Correct a transaction's flow_type, category and/or entity (personal or"
+         " business:<slug>). Overrides persist across syncs.",
+         _obj({"transaction_id": {"type": "string"}, "flow_type": {"type": "string"}, "category": {"type": "string"},
+               "entity": {"type": "string"}}, ["transaction_id"]), _txn_override, mutating=True),
     Tool("set_account", "Set and lock an account's kind, entity (personal or business:<slug>), name or is_active.",
          _obj({"account_id": {"type": "string"}, "kind": {"type": "string"}, "entity": {"type": "string"},
                "name": {"type": "string"}, "is_active": {"type": "boolean"}}, ["account_id"]), _account_set, mutating=True),

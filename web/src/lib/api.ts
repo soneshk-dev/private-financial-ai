@@ -18,6 +18,12 @@ export type Txn = { id: string; posted_at: string; account_name: string; account
 export type Positions = { total: number; cost_basis_known: number; allocation: Record<string, number>; accounts: { account_id: string; name: string; kind: string; institution: string | null; as_of: string; value: number; positions: { key: string; symbol: string | null; description: string | null; quantity: number | null; price: number | null; value: number; cost_basis: number | null; asset_class: string | null }[] }[] };
 export type Crypto = { wallets: { id: string; name: string; source: string; balance: number | null; as_of: string | null }[]; total: number; protocols: { protocol: string; network: string; supplied: any[]; borrowed: any[]; claimable: any[]; net: number }[]; aave: { health_factor: number; status: string; collateral: number; debt: number; liquidation_price_btc: number | null; collateral_breakdown: Record<string, number>; debt_breakdown: Record<string, number> } | null };
 export type Health = { version: string; schema_version: number; connectors: { connector: string; status: string; last_success_at: string | null; last_error: string | null; rows_written: number }[]; connections: { id: string; connector: string; institution: string; status: string; error_code: string | null; last_success_at: string | null }[]; counts: Record<string, number>; latest_snapshot: { as_of: string; net_worth: number } | null };
+export type Entity = { slug: string; name: string; kind: string; tax_form: string | null; accounts: number; transactions: number; months: number; revenue: number; expenses: number; net: number };
+export type PnlRow = { month: string; revenue: number; expenses: number; taxes: number; transfers: number; n: number; net: number };
+export type ReviewItem = { id: string; posted_at: string; account_name: string; amount: number; description: string | null; merchant: string | null; category: string | null; flow: string; entity: string; reason: string };
+export type Runway = { as_of: string; reserve: number; reserve_detail: { name: string; kind: string; value: number }[]; burn: { months_averaged: number; spending: number; loan_payments: number; taxes: number; total: number }; incomes: { name: string; monthly: number; observed_monthly: number; until: string | null; matches: number }[]; net_monthly_now: number; months_no_income: number | null; cliff_month: string | null; reserve_at_horizon: number; series: { month: string; reserve: number; income: number; burn: number }[] };
+export type TaxEstimate = { year: number; as_of: string; filing_status: string; income: { wages: number; wages_source: string; other_personal_income: number; investment_income: number; business: Record<string, { revenue: number; expenses: number; net: number }>; business_net: number; additional: Record<string, number>; agi: number }; deductions: { standard: number }; taxable_income: number; federal: { tax: number; niit: number; marginal_rate: number; paid: number; remaining: number }; state: { rate: number; tax: number; paid: number; remaining: number }; total_tax: number; effective_rate: number | null; safe_harbor: { required_payments: number; multiplier: number; paid: number; shortfall: number; met: boolean } | null; schedule: { due: string; federal: number; state: number }[]; roth_headroom_in_bracket: number | null; caveats: string[] };
+export type Goal = { slug: string; name: string; kind: string; priority: number; target_amount: number | null; target_date: string | null; current: number; pct: number | null; remaining: number | null; months_left: number | null; needed_monthly: number | null; monthly_contribution: number | null; on_track: boolean | null; notes: string | null };
 export type Model = { name: string; base_url: string; reachable: boolean; model: string | null; default: boolean; fallback: boolean };
 export type Conversation = { id: string; title: string | null; provider: string | null; model: string | null; created_at: string; updated_at: string; n?: number; messages?: Message[] };
 export type Message = { id?: number; role: 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: any[] | null; name?: string | null };
@@ -44,7 +50,13 @@ export const api = {
   spending: (month?: string, entity?: string) => j<Spending>(`/api/spending${q({ month, entity })}`),
   budgets: (month?: string) => j<Budget[]>(`/api/budgets${q({ month })}`),
   transactions: (f: Record<string, any>) => j<Txn[]>(`/api/transactions${q(f)}`),
-  patchTxn: (id: string, body: { flow_type?: string; category?: string }) =>
+  entities: (months = 12) => j<Entity[]>(`/api/entities${q({ months })}`),
+  pnl: (entity: string, months = 12) => j<PnlRow[]>(`/api/business/pnl${q({ entity, months })}`),
+  review: (months = 6) => j<ReviewItem[]>(`/api/business/review${q({ months })}`),
+  runway: () => j<Runway>('/api/runway'),
+  tax: () => j<TaxEstimate>('/api/tax'),
+  goals: () => j<Goal[]>('/api/goals'),
+  patchTxn: (id: string, body: { flow_type?: string; category?: string; entity?: string }) =>
     j<{ ok: boolean }>(`/api/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   positions: () => j<Positions>('/api/positions'),
   crypto: () => j<Crypto>('/api/crypto'),

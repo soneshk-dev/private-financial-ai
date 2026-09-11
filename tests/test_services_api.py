@@ -71,7 +71,7 @@ def test_api(cfg, conn, seeded):
     conn.execute("COMMIT")
     client = TestClient(create_app(cfg))
     h = client.get("/api/health").json()
-    assert h["schema_version"] == 2 and h["counts"]["transactions"] == 17
+    assert h["schema_version"] == 3 and h["counts"]["transactions"] == 17
     accts = client.get("/api/accounts").json()
     assert len(accts) == 6 and any(a["kind"] == "mortgage" for a in accts)
     nw = client.get("/api/net-worth?days=30").json()

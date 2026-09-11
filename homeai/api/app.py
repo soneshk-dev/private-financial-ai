@@ -32,6 +32,7 @@ class AccountPatch(BaseModel):
 class TxnPatch(BaseModel):
     flow_type: str | None = None
     category: str | None = None
+    entity: str | None = None
 
 
 class Exchange(BaseModel):
@@ -116,9 +117,36 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if not conn.execute("SELECT 1 FROM transactions WHERE id = ?", (txn_id,)).fetchone():
             raise HTTPException(404, "transaction not found")
         conn.execute("BEGIN")
-        set_override(conn, txn_id, flow_type=body.flow_type, category=body.category)
+        set_override(conn, txn_id, flow_type=body.flow_type, category=body.category, entity=body.entity)
         conn.execute("COMMIT")
         return {"ok": True}
+
+    # --- Plan: business, runway, taxes, goals -----------------------------------
+    from ..services import business, goals, runway, taxes
+
+    @app.get("/api/entities")
+    def api_entities(months: int = 12, conn: sqlite3.Connection = Depends(db)):
+        return business.summary(conn, months)
+
+    @app.get("/api/business/pnl")
+    def api_business_pnl(entity: str, months: int = 12, conn: sqlite3.Connection = Depends(db)):
+        return business.pnl(conn, entity, months)
+
+    @app.get("/api/business/review")
+    def api_business_review(months: int = 6, conn: sqlite3.Connection = Depends(db)):
+        return business.review_queue(conn, months)
+
+    @app.get("/api/runway")
+    def api_runway(conn: sqlite3.Connection = Depends(db)):
+        return runway.project(conn, cfg)
+
+    @app.get("/api/tax")
+    def api_tax(conn: sqlite3.Connection = Depends(db)):
+        return taxes.estimate(conn, cfg)
+
+    @app.get("/api/goals")
+    def api_goals(conn: sqlite3.Connection = Depends(db)):
+        return goals.progress(conn)
 
     @app.get("/api/positions")
     def api_positions(conn: sqlite3.Connection = Depends(db)):
