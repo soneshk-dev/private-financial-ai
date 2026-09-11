@@ -71,6 +71,7 @@ def progress(conn: sqlite3.Connection, today: date | None = None) -> list[dict[s
         needed = round(remaining / months_left, 2) if months_left and remaining and remaining > 0 else None
         out.append({"slug": g["slug"], "name": g["name"], "kind": g["kind"], "priority": g["priority"],
                     "target_amount": target, "target_date": g["target_date"], "current": round(current, 2),
+                    "start_amount": g["start_amount"],
                     "linked_accounts": ids, "pct": pct, "remaining": remaining, "months_left": months_left,
                     "needed_monthly": needed, "monthly_contribution": g["monthly_contribution"],
                     "on_track": (needed is None or (g["monthly_contribution"] or 0) >= needed) if pct is not None else None,

@@ -31,6 +31,11 @@ Not financial advice. No cloud. No telemetry.
 - **MCP server** exposing the same tools to Claude Code or any MCP client
   (`homeai mcp`, stdio or streamable HTTP, optional read-only mode).
 - **Daily brief** over Telegram, computed deterministically from the ledger.
+- **Plan.** Entities (personal plus each business) with per-entity P&L and a
+  review queue for business charges on personal accounts; a runway projection
+  from liquid reserves, burn rate and dated incomes; a transparent tax
+  estimate (brackets, payments made, safe harbour, remaining schedule,
+  bracket headroom); goals; threshold alerts over Telegram after each sync.
 - **Dashboards.** A SvelteKit single-page app (`web/`) served by the API:
   overview with net worth over time, cash flow, spending with budgets and
   inline overrides, transactions, portfolio with allocation and Aave health,

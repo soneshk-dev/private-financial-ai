@@ -48,9 +48,12 @@
     <div class="card">
       <h2>Goals</h2>
       {#each goals as g}
-        <Meter name="{g.name}{g.target_date ? ' · ' + g.target_date.slice(0, 7) : ''}" spent={g.current} limit={g.target_amount ?? g.current} status={goalStatus(g)} />
+        <Meter name="{g.name}{g.target_date ? ' · ' + g.target_date.slice(0, 7) : ''}"
+               spent={g.kind === 'debt' ? Math.max((g.start_amount ?? g.current) - g.current, 0) : g.current}
+               limit={g.kind === 'debt' ? (g.start_amount ?? g.current) : (g.target_amount ?? g.current)} status={goalStatus(g)} />
         <div class="muted small" style="margin:-4px 0 10px">
-          {#if g.kind === 'debt'}remaining {money(g.remaining)}{:else}{money(g.remaining ?? 0)} to go{/if}
+          {#if g.kind === 'debt'}paid down {money(Math.max((g.start_amount ?? g.current) - g.current, 0))} · remaining {money(g.remaining)}
+          {:else if (g.remaining ?? 0) <= 0}target met{:else}{money(g.remaining ?? 0)} to go{/if}
           {#if g.months_left !== null} · {g.months_left} months{/if}{#if g.needed_monthly} · needs {money(g.needed_monthly)}/mo{/if}{#if g.monthly_contribution} · saving {money(g.monthly_contribution)}/mo{/if}
         </div>
       {:else}<div class="muted small">No goals configured (private/config.yaml → goals).</div>{/each}
