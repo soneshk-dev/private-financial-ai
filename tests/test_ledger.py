@@ -50,6 +50,9 @@ def test_infer_flow_rules():
     assert f("Financial Services > Loans & Fees", -50000, "checking", "HELOC PAYMENT") == "loan_payment"
     assert f("Home & Housing > Home", -2792, "cash_mgmt", "BILL PAYMENT HUNTINGTON MORTGAGE (Cash)") == "loan_payment"
     assert f("Income > Other Income", 1200, "checking", "MORTGAGE ESCROW REFUND") == "income"
+    assert f("Income > Salary & Wages", 2665, "credit_card", "ROMANN CUSTOM UPHOLSTE") == "refund"   # merchant credit
+    assert f("Financial Services > Loans & Fees", -87.8, "credit_card", "LAVANT COLL") == "fee"
+    assert f("Financial Services > Loans & Fees", -87.8, "checking", "LAVANT COLL") == "loan_payment"
 
 
 def test_user_rules_take_precedence():

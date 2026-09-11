@@ -10,9 +10,10 @@ def test_fina_parse_transactions_both_layouts():
     # ids are opaque tokens (not UUIDs); dates carry a time part
     new = ("jZbDJ0ov73I5OROpqpAdiyw9KPZXmJiQrJkdD,2026-08-31T00:00:00.000Z,DIVIDEND RECEIVED FIDELITY MMKT,,acct-x,459.33,other income,USD,,false,false\n"
            "rOJk9K4xnrho7d7n8nARhnjgxQoPK3UKpzjJE,2026-08-31T00:00:00.000Z,DIRECT DEBIT ATT PAYMENT (Cash),ATT,acct-x,-55,bills & utilities,USD,,false,false\n"
-           "bad,row\n")
+           "bad,row\n"
+           "Q1ZPlaceholderIdXXXXXXXXXXXXXXXXXXXXX,2026-09-22T00:00:00.000Z,future payment for Rewards Visa 1234,,acct-c,0,,USD,,false,false\n")
     rows = FinaConnector.parse_transactions(new)
-    assert len(rows) == 2 and rows[0]["amount"] == 459.33 and rows[1]["merchant"] == "ATT" and rows[1]["date"] == "2026-08-31"
+    assert len(rows) == 2                      # the zero-amount "future payment" forecast row is dropped and rows[0]["amount"] == 459.33 and rows[1]["merchant"] == "ATT" and rows[1]["date"] == "2026-08-31"
     assert rows[0]["id"] == "jZbDJ0ov73I5OROpqpAdiyw9KPZXmJiQrJkdD"
     old = "2025-12-01,PAYCHECK,ACME,acct-y,5000,primary paycheck,USD,\n"
     rows = FinaConnector.parse_transactions(old)

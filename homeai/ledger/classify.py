@@ -255,9 +255,12 @@ def infer_flow(category: str | None, amount: float, account_kind: str = "checkin
             return "fee"
         return "loan_payment"
 
-    # 1b. payments received on a credit card are transfers from the household's own cash
-    if account_kind == "credit_card" and amount > 0 and _CARD_PAYMENT.search(desc):
-        return "transfer"
+    # 1b. money arriving on a credit card is either the household paying the bill (transfer)
+    #     or a merchant credit (refund); it is never income
+    if account_kind == "credit_card" and amount > 0:
+        if _CARD_PAYMENT.search(desc) or _TRANSFER_DESC.search(desc) or l1 in ("Transfers", "Uncategorized"):
+            return "transfer"
+        return "refund"
 
     # 2. strong description signals
     for pat, flow in _DESC_RULES:
@@ -290,8 +293,9 @@ def infer_flow(category: str | None, amount: float, account_kind: str = "checkin
             return "tax"
         if "credit card payment" in subl:
             return "transfer"
-        if "mortgage" in subl or "loan" in subl or "car payment" in subl or "student" in subl:
-            return "loan_payment"
+        if account_kind != "credit_card" and (
+                "mortgage" in subl or "loan" in subl or "car payment" in subl or "student" in subl):
+            return "loan_payment"      # on a card, "Loans & Fees" is a fee/charge, not loan servicing
         if "interest" in subl or "fee" in subl:
             return "fee"
         if "payment reversal" in subl or "returned payment" in subl:

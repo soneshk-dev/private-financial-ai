@@ -1,6 +1,9 @@
 """Fina.money: Fidelity balances, holdings and transactions (via Fina's aggregator).
 
-Kept until Plaid's Fidelity OAuth connection is approved; then retire.
+Fina's transaction ids are stable across fetches (verified 2026-09), so rows are keyed
+by them directly. The same transaction can legitimately appear twice in a feed
+(e.g. two identical contributions on one day); each carries its own id.
+Retire once Plaid (or Fidelity directly) covers these accounts.
 """
 from __future__ import annotations
 
@@ -97,6 +100,8 @@ class FinaConnector:
                            "currency": row[6] or "USD"}
             except (ValueError, TypeError, IndexError):
                 continue
+            if rec["amount"] == 0 and rec["name"].lower().startswith("future payment"):
+                continue        # Fina's forecast placeholder for the next card payment, not a transaction
             if not rec["id"]:
                 rec["id"] = hashlib.md5(f"{rec['date']}|{rec['account_id']}|{rec['amount']:.2f}|{rec['name']}".encode()).hexdigest()
             out.append(rec)

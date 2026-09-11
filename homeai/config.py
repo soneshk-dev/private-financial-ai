@@ -82,7 +82,7 @@ class PlaidConfig(BaseModel):
 class FinaConfig(BaseModel):
     conf_file: str = "fina.conf"
     institution_filter: str | None = "Fidelity"
-    skip_kinds: list[str] = ["credit_card"]   # Plaid covers the Fidelity card better
+    skip_kinds: list[str] = []                # e.g. ["credit_card"] while another connector covers the card
     transaction_days: int = 120
 
 
