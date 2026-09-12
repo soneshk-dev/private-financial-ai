@@ -62,6 +62,19 @@ def main(argv: list[str] | None = None) -> int:
     al = sub.add_parser("alerts", help="evaluate alerts")
     al.add_argument("--send", action="store_true")
     rt = sub.add_parser("retag", help="apply entity rules to all transactions")
+    ct = sub.add_parser("categories", help="category taxonomy with usage counts")
+    ct.add_argument("--suggest", action="store_true", help="propose merges for sub-categories outside the core taxonomy")
+    ct.add_argument("--apply", action="store_true", help="with --suggest: apply every suggestion")
+    rc = sub.add_parser("recategorize", help="set a transaction's category (guarded by the taxonomy)")
+    rc.add_argument("transaction_id")
+    rc.add_argument("category", help="'Level 1 > Sub'")
+    rc.add_argument("--merchant", action="store_true", help="apply to every transaction from the same merchant")
+    rc.add_argument("--remember", action="store_true", help="store a merchant rule for future syncs")
+    rc.add_argument("--allow-new", action="store_true", help="permit a new sub-category")
+    cr = sub.add_parser("category-rename", help="rename or merge a category across the ledger")
+    cr.add_argument("old")
+    cr.add_argument("new")
+    cr.add_argument("--allow-new", action="store_true")
     pl = sub.add_parser("plaid", help="Plaid helpers")
     pls = pl.add_subparsers(dest="plaid_cmd", required=True)
     plt = pls.add_parser("link-token")
@@ -211,6 +224,33 @@ def main(argv: list[str] | None = None) -> int:
         from .services.business import apply_entity_rules, sync_entities
         conn.execute("BEGIN"); sync_entities(conn, cfg); n = apply_entity_rules(conn, cfg); conn.execute("COMMIT")
         _json({"retagged": n})
+    elif a.cmd == "categories":
+        from .services.categories import rename_category, suggest_merges, taxonomy
+        if a.suggest:
+            for sg in suggest_merges(conn):
+                print(f"{sg['confidence']:.2f}  {sg['n']:>5}  {sg['from']:<50} -> {sg['to']}")
+                if a.apply:
+                    rename_category(conn, sg["from"], sg["to"])
+        else:
+            for t in taxonomy(conn):
+                print(f"{t['level1']}  ({t['n']}, {t['stray']} outside the core taxonomy)")
+                for sc in t["subs"]:
+                    print(f"    {'' if sc['core'] else '? '}{sc['name']:<40} {sc['n']:>5}")
+    elif a.cmd == "recategorize":
+        from .services.categories import recategorize
+        try:
+            _json(recategorize(conn, a.transaction_id, a.category, scope="merchant" if a.merchant else "one",
+                               remember=a.remember, allow_new=a.allow_new))
+        except (KeyError, ValueError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+    elif a.cmd == "category-rename":
+        from .services.categories import rename_category
+        try:
+            _json(rename_category(conn, a.old, a.new, allow_new=a.allow_new))
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
     elif a.cmd == "mcp":
         from . import mcp_server
         conn.close()

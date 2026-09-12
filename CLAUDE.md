@@ -15,6 +15,14 @@ Read `README.md` first. This file covers the rules that are not obvious from the
 
 Implement `name`, `configured()`, `sync(conn, cfg, as_of) -> SyncResult`; write through `ledger.accounts.upsert_account`, `ledger.balances.record_balance` / `replace_positions`, `ledger.transactions.upsert_transaction`; call `store_raw` with the payload; register in `connectors/registry.py`; add a parse test with a synthetic payload.
 
+## Categories
+
+`services/categories.py` owns the taxonomy: level 1 is fixed (`MASTER_CATEGORIES`), sub-categories are the
+provider mappings + `CURATED` + user-kept ones (settings `category_taxonomy_extra`). Every manual category
+write goes through `validate_category` (unknown level 1 is refused; a new sub needs `allow_new`) and
+`recategorize` (scope one|merchant, optional exact-match merchant rule). Inherited free-text names are
+flagged `core: false` and merged with `rename_category`, which also repoints rules and budgets.
+
 ## Adding a read
 
 Put the SQL in `homeai/services/*.py` as a pure function over a connection, expose it in `api/app.py`, add a test in `tests/test_services_api.py`. The MCP tools and chat layer (next phase) wrap the same functions.
@@ -34,4 +42,5 @@ homeai migrate | sync [--only plaid,fina] [--force] | snapshot | backfill --from
 homeai accounts | health | networth | cashflow | spending --month YYYY-MM | reclassify | pair
 homeai serve | homeai plaid link-token [--update ID] | plaid exchange TOKEN | plaid remove ID
 homeai chat "question" [--provider spark] [--events] | models | profile | brief [--send] | mcp [--http --port 5011] [--readonly]
+homeai categories [--suggest [--apply]] | recategorize TXN "Level 1 > Sub" [--merchant] [--remember] [--allow-new] | category-rename OLD NEW
 ```

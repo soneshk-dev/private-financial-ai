@@ -19,7 +19,7 @@ from ..config import Config, load_config
 from ..db import connect, migrate
 from ..ledger.accounts import set_locked
 from ..ledger.transactions import set_override
-from ..services import cashflow, health, overview, portfolio
+from ..services import cashflow, categories, health, overview, portfolio
 
 
 class AccountPatch(BaseModel):
@@ -33,6 +33,24 @@ class TxnPatch(BaseModel):
     flow_type: str | None = None
     category: str | None = None
     entity: str | None = None
+
+
+class CategorySet(BaseModel):
+    category: str
+    scope: str = "one"                 # one | merchant
+    remember: bool = False             # store an exact-match merchant rule for future syncs
+    allow_new: bool = False            # permit a sub-category that is not in the taxonomy yet
+
+
+class CategoryKeep(BaseModel):
+    category: str
+    keep: bool = True
+
+
+class CategoryRename(BaseModel):
+    from_category: str
+    to_category: str
+    allow_new: bool = False
 
 
 class Exchange(BaseModel):
@@ -116,9 +134,62 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def api_txn_patch(txn_id: str, body: TxnPatch, conn: sqlite3.Connection = Depends(db)):
         if not conn.execute("SELECT 1 FROM transactions WHERE id = ?", (txn_id,)).fetchone():
             raise HTTPException(404, "transaction not found")
+        cat = None
+        if body.category is not None:
+            try:
+                cat = categories.validate_category(conn, body.category)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
         conn.execute("BEGIN")
-        set_override(conn, txn_id, flow_type=body.flow_type, category=body.category, entity=body.entity)
+        set_override(conn, txn_id, flow_type=body.flow_type, category=cat, entity=body.entity)
         conn.execute("COMMIT")
+        return {"ok": True, "category": cat}
+
+    # --- Categories: taxonomy, consistent recategorisation, rules --------------
+    @app.get("/api/categories")
+    def api_categories(conn: sqlite3.Connection = Depends(db)):
+        return {"taxonomy": categories.taxonomy(conn), "rules": categories.list_rules(conn, user_only=True),
+                "rule_counts": categories.rule_counts(conn)}
+
+    @app.get("/api/categories/suggestions")
+    def api_category_suggestions(conn: sqlite3.Connection = Depends(db)):
+        return categories.suggest_merges(conn)
+
+    @app.post("/api/categories/keep")
+    def api_category_keep(body: CategoryKeep, conn: sqlite3.Connection = Depends(db)):
+        try:
+            return {"kept": sorted(categories.set_kept(conn, body.category, body.keep))}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/transactions/{txn_id}/similar")
+    def api_txn_similar(txn_id: str, conn: sqlite3.Connection = Depends(db)):
+        try:
+            return categories.similar(conn, txn_id)
+        except KeyError:
+            raise HTTPException(404, "transaction not found")
+
+    @app.post("/api/transactions/{txn_id}/category")
+    def api_txn_category(txn_id: str, body: CategorySet, conn: sqlite3.Connection = Depends(db)):
+        try:
+            return categories.recategorize(conn, txn_id, body.category, scope=body.scope, remember=body.remember,
+                                           allow_new=body.allow_new)
+        except KeyError:
+            raise HTTPException(404, "transaction not found")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.post("/api/categories/rename")
+    def api_category_rename(body: CategoryRename, conn: sqlite3.Connection = Depends(db)):
+        try:
+            return categories.rename_category(conn, body.from_category, body.to_category, allow_new=body.allow_new)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.delete("/api/categories/rules/{rule_id}")
+    def api_rule_delete(rule_id: int, conn: sqlite3.Connection = Depends(db)):
+        if not categories.delete_rule(conn, rule_id):
+            raise HTTPException(404, "rule not found")
         return {"ok": True}
 
     # --- Plan: business, runway, taxes, goals -----------------------------------

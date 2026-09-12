@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from homeai.api.app import create_app
@@ -87,3 +88,66 @@ def test_api(cfg, conn, seeded):
     assert r.status_code == 200
     assert client.get("/api/positions").json()["total"] == 30000
     assert client.get("/link").status_code == 200
+
+
+def test_categories_taxonomy_and_recategorize(conn, seeded):
+    from homeai.services import categories as C
+    from homeai.ledger.transactions import upsert_transaction
+    tax = C.taxonomy(conn)
+    food = next(t for t in tax if t["level1"] == "Food & Dining")
+    assert any(s["category"] == "Food & Dining > Groceries" for s in food["subs"])
+    amazon = conn.execute("SELECT id FROM transactions_v WHERE merchant = 'Amazon' LIMIT 1").fetchone()["id"]
+    with pytest.raises(ValueError):                       # unknown level 1
+        C.validate_category(conn, "Gadgets > Toys")
+    with pytest.raises(ValueError):                       # unknown sub without allow_new
+        C.validate_category(conn, "Shopping > Gadgets")
+    assert C.validate_category(conn, "shopping > gadgets", allow_new=True) == "Shopping > Gadgets"
+    sim = C.similar(conn, amazon)
+    r = C.recategorize(conn, amazon, "Shopping > Electronics", scope="merchant", remember=True)
+    assert r["affected"] == sim["n"] + 1 and r["rule_id"]
+    cats = {x["category"] for x in conn.execute("SELECT category FROM transactions_v WHERE merchant = 'Amazon'")}
+    assert cats == {"Shopping > Electronics"}
+    assert C.similar(conn, amazon)["rule"]["category"] == "Shopping > Electronics"
+    conn.execute("BEGIN")                                 # a freshly synced Amazon row picks the rule up
+    upsert_transaction(conn, source="plaid", source_txn_id="amz-new", account_id=seeded["card"], posted_at="2026-09-27",
+                       amount=-12.5, description="AMAZON MKTPLACE", merchant="Amazon",
+                       category_raw="GENERAL_MERCHANDISE > GENERAL_MERCHANDISE_ONLINE_MARKETPLACES")
+    conn.execute("COMMIT")
+    assert conn.execute("SELECT category FROM transactions_v WHERE source_txn_id = 'amz-new'").fetchone()[0] == "Shopping > Electronics"
+    out = C.rename_category(conn, "Shopping > Electronics", "Shopping > Online Shopping")
+    assert out["affected"] >= 2 and out["rules"] == 1
+    assert conn.execute("SELECT COUNT(*) FROM transactions_v WHERE category = 'Shopping > Electronics'").fetchone()[0] == 0
+    assert C.delete_rule(conn, r["rule_id"]) and not C.list_rules(conn)
+
+
+def test_categories_api(cfg, conn, seeded):
+    from fastapi.testclient import TestClient
+    from homeai.api.app import create_app
+    client = TestClient(create_app(cfg))
+    tax = client.get("/api/categories").json()
+    assert [t["level1"] for t in tax["taxonomy"]][0] == "Food & Dining"
+    tid = client.get("/api/transactions", params={"q": "TARGET"}).json()[0]["id"]
+    assert client.post(f"/api/transactions/{tid}/category", json={"category": "Nope > X"}).status_code == 400
+    r = client.post(f"/api/transactions/{tid}/category", json={"category": "Shopping > Superstores", "scope": "merchant", "remember": True})
+    assert r.status_code == 200 and r.json()["rule_id"]
+    assert client.get(f"/api/transactions/{tid}/similar").json()["rule"]["category"] == "Shopping > Superstores"
+    assert client.patch(f"/api/transactions/{tid}", json={"category": "Made Up"}).status_code == 400
+    assert client.post("/api/categories/rename", json={"from_category": "Shopping > Superstores", "to_category": "Shopping > Department Stores"}).json()["affected"] >= 1
+    assert client.delete(f"/api/categories/rules/{r.json()['rule_id']}").json()["ok"]
+
+
+def test_categories_core_keep_and_suggestions(conn, seeded):
+    from homeai.services import categories as C
+    from homeai.ledger.transactions import set_override
+    tid = conn.execute("SELECT id FROM transactions_v WHERE merchant = 'Amazon' LIMIT 1").fetchone()["id"]
+    conn.execute("BEGIN"); set_override(conn, tid, category="Food & Dining > Grocery Shopping"); conn.execute("COMMIT")
+    tax = {t["level1"]: t for t in C.taxonomy(conn)}
+    stray = [s for s in tax["Food & Dining"]["subs"] if not s["core"]]
+    assert [s["name"] for s in stray] == ["Grocery Shopping"] and tax["Food & Dining"]["stray"] == 1
+    sug = C.suggest_merges(conn)
+    assert sug and sug[0]["from"] == "Food & Dining > Grocery Shopping" and sug[0]["to"] == "Food & Dining > Groceries"
+    C.set_kept(conn, "Food & Dining > Grocery Shopping", True)        # promote it instead
+    assert "Food & Dining > Grocery Shopping" in C.core_categories(conn) and not C.suggest_merges(conn)
+    C.set_kept(conn, "Food & Dining > Grocery Shopping", False)
+    assert C.suggest_merges(conn)
+    assert C.rule_counts(conn) == {}

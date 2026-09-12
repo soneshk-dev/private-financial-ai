@@ -24,6 +24,12 @@ export type ReviewItem = { id: string; posted_at: string; account_name: string; 
 export type Runway = { as_of: string; reserve: number; reserve_detail: { name: string; kind: string; value: number }[]; burn: { months_averaged: number; spending: number; loan_payments: number; taxes: number; total: number }; incomes: { name: string; monthly: number; observed_monthly: number; until: string | null; matches: number }[]; net_monthly_now: number; months_no_income: number | null; cliff_month: string | null; reserve_at_horizon: number; series: { month: string; reserve: number; income: number; burn: number }[] };
 export type TaxEstimate = { year: number; as_of: string; filing_status: string; income: { wages: number; wages_source: string; other_personal_income: number; investment_income: number; business: Record<string, { revenue: number; expenses: number; net: number }>; business_net: number; additional: Record<string, number>; agi: number }; deductions: { standard: number }; taxable_income: number; federal: { tax: number; niit: number; marginal_rate: number; paid: number; remaining: number }; state: { rate: number; tax: number; paid: number; remaining: number }; total_tax: number; effective_rate: number | null; safe_harbor: { required_payments: number; multiplier: number; paid: number; shortfall: number; met: boolean } | null; schedule: { due: string; federal: number; state: number }[]; roth_headroom_in_bracket: number | null; caveats: string[] };
 export type Goal = { slug: string; name: string; kind: string; priority: number; target_amount: number | null; target_date: string | null; current: number; start_amount: number | null; pct: number | null; remaining: number | null; months_left: number | null; needed_monthly: number | null; monthly_contribution: number | null; on_track: boolean | null; notes: string | null };
+export type TaxonomySub = { name: string; category: string; n: number; last: string | null; core: boolean };
+export type TaxonomyL1 = { level1: string; n: number; bare_n: number; stray: number; subs: TaxonomySub[] };
+export type MergeSuggestion = { from: string; to: string; n: number; last: string | null; confidence: number };
+export type CategoryRule = { id: number; pattern: string; match_kind: string; category: string; flow_type: string | null; priority: number; source: string | null; created_at: string };
+export type Similar = { merchant: string; n: number; categories: { category: string | null; n: number; total: number }[]; rule: { id: number; category: string } | null };
+export type CategoryResult = { id: string; category: string; scope: 'one' | 'merchant'; merchant: string; affected: number; rule_id: number | null };
 export type Model = { name: string; base_url: string; reachable: boolean; model: string | null; default: boolean; fallback: boolean };
 export type Conversation = { id: string; title: string | null; provider: string | null; model: string | null; created_at: string; updated_at: string; n?: number; messages?: Message[] };
 export type Message = { id?: number; role: 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: any[] | null; name?: string | null };
@@ -58,6 +64,15 @@ export const api = {
   goals: () => j<Goal[]>('/api/goals'),
   patchTxn: (id: string, body: { flow_type?: string; category?: string; entity?: string }) =>
     j<{ ok: boolean }>(`/api/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  categories: () => j<{ taxonomy: TaxonomyL1[]; rules: CategoryRule[]; rule_counts: Record<string, number> }>('/api/categories'),
+  categorySuggestions: () => j<MergeSuggestion[]>('/api/categories/suggestions'),
+  keepCategory: (category: string, keep = true) => j<{ kept: string[] }>('/api/categories/keep', { method: 'POST', body: JSON.stringify({ category, keep }) }),
+  similar: (id: string) => j<Similar>(`/api/transactions/${id}/similar`),
+  setCategory: (id: string, body: { category: string; scope: 'one' | 'merchant'; remember?: boolean; allow_new?: boolean }) =>
+    j<CategoryResult>(`/api/transactions/${id}/category`, { method: 'POST', body: JSON.stringify(body) }),
+  renameCategory: (from_category: string, to_category: string, allow_new = false) =>
+    j<{ from: string; to: string; affected: number; rules: number }>('/api/categories/rename', { method: 'POST', body: JSON.stringify({ from_category, to_category, allow_new }) }),
+  deleteRule: (id: number) => j<{ ok: boolean }>(`/api/categories/rules/${id}`, { method: 'DELETE' }),
   positions: () => j<Positions>('/api/positions'),
   crypto: () => j<Crypto>('/api/crypto'),
   sync: (only?: string) => j<any>(`/api/sync${q({ only })}`, { method: 'POST' }),

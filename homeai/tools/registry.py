@@ -67,14 +67,28 @@ def _schema(conn, cfg, args) -> dict[str, Any]:
 
 
 def _txn_override(conn, cfg, args) -> dict[str, Any]:
+    from ..services import categories
     tid = args["transaction_id"]
     if not conn.execute("SELECT 1 FROM transactions WHERE id = ?", (tid,)).fetchone():
         return {"error": f"unknown transaction {tid}"}
-    conn.execute("BEGIN")
-    set_override(conn, tid, flow_type=args.get("flow_type"), category=args.get("category"), entity=args.get("entity"))
-    conn.execute("COMMIT")
+    out: dict[str, Any] = {}
+    if args.get("category"):
+        try:
+            out = categories.recategorize(conn, tid, args["category"], scope=args.get("scope") or "one",
+                                          remember=bool(args.get("remember")), allow_new=bool(args.get("allow_new")))
+        except ValueError as e:
+            return {"error": str(e)}
+    if args.get("flow_type") or args.get("entity"):
+        conn.execute("BEGIN")
+        set_override(conn, tid, flow_type=args.get("flow_type"), entity=args.get("entity"))
+        conn.execute("COMMIT")
     row = conn.execute("SELECT id, description, amount, flow, category, entity FROM transactions_v WHERE id = ?", (tid,)).fetchone()
-    return dict(row)
+    return {**dict(row), **{k: v for k, v in out.items() if k in ("scope", "merchant", "affected", "rule_id")}}
+
+
+def _categories(conn, cfg, args) -> dict[str, Any]:
+    from ..services import categories
+    return {t["level1"]: [s["name"] for s in t["subs"]] for t in categories.taxonomy(conn)}
 
 
 def _account_set(conn, cfg, args) -> dict[str, Any]:
@@ -155,10 +169,15 @@ TOOLS: list[Tool] = [
          " listed caveats, not advice.", _obj(), lambda conn, cfg, a: taxes.estimate(conn, cfg)),
     Tool("get_goals", "Goals with current amount, target, percent complete, months left and needed monthly saving.",
          _obj(), lambda conn, cfg, a: goals.progress(conn)),
-    Tool("set_transaction_override", "Correct a transaction's flow_type, category and/or entity (personal or"
-         " business:<slug>). Overrides persist across syncs.",
+    Tool("get_categories", "The category taxonomy ('Level 1 > Sub') a transaction may be assigned to. Call before"
+         " set_transaction_override with a category so the name matches exactly.", _obj(), _categories),
+    Tool("set_transaction_override", "Correct a transaction's flow_type, category ('Level 1 > Sub' from get_categories)"
+         " and/or entity (personal or business:<slug>). scope='merchant' recategorises every transaction from the same"
+         " merchant; remember=true stores a merchant rule so future syncs match. Overrides persist across syncs.",
          _obj({"transaction_id": {"type": "string"}, "flow_type": {"type": "string"}, "category": {"type": "string"},
-               "entity": {"type": "string"}}, ["transaction_id"]), _txn_override, mutating=True),
+               "entity": {"type": "string"}, "scope": {"type": "string", "enum": ["one", "merchant"]},
+               "remember": {"type": "boolean"}, "allow_new": {"type": "boolean"}}, ["transaction_id"]),
+         _txn_override, mutating=True),
     Tool("set_account", "Set and lock an account's kind, entity (personal or business:<slug>), name or is_active.",
          _obj({"account_id": {"type": "string"}, "kind": {"type": "string"}, "entity": {"type": "string"},
                "name": {"type": "string"}, "is_active": {"type": "boolean"}}, ["account_id"]), _account_set, mutating=True),

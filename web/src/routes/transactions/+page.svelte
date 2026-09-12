@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api, type Txn, type Account } from '$lib/api';
   import { money, FLOWS } from '$lib/format';
+  import CategoryPicker from '$lib/components/CategoryPicker.svelte';
 
   let txns: Txn[] = $state([]);
   let accounts: Account[] = $state([]);
@@ -15,14 +16,22 @@
   const debounced = () => { clearTimeout(t); t = setTimeout(load, 250); };
 
   async function setFlow(x: Txn, flow: string) { await api.patchTxn(x.id, { flow_type: flow }); x.flow = flow; }
-  async function setCategory(x: Txn) {
-    const c = prompt('Category (Level 1 > Sub):', x.category ?? '');
-    if (c && c !== x.category) { await api.patchTxn(x.id, { category: c }); x.category = c; }
+  let picking: Txn | null = $state(null);
+  let toast = $state('');
+  function applied(r: { id: string; category: string; scope: string; merchant: string; affected: number; rule_id: number | null }) {
+    const key = r.merchant.toLowerCase();
+    for (const x of txns) {
+      if (x.id === r.id || (r.scope === 'merchant' && ((x.merchant ?? x.description ?? '').trim().toLowerCase() === key))) {
+        x.category = r.category; x.category_l1 = r.category.split(' > ')[0];
+      }
+    }
+    toast = `${r.category} → ${r.affected} transaction${r.affected === 1 ? '' : 's'}${r.rule_id ? ' · rule saved' : ''}`;
+    setTimeout(() => (toast = ''), 4000);
   }
   const sum = $derived(txns.reduce((s, x) => s + x.amount, 0));
 </script>
 
-<div class="page-head"><h1>Transactions</h1><div class="sub">{txns.length} shown · sum {money(sum)}</div></div>
+<div class="page-head"><h1>Transactions</h1><div class="sub">{txns.length} shown · sum {money(sum)}{#if toast} · <span class="badge good">{toast}</span>{/if}</div></div>
 <div class="filters">
   <input placeholder="Search description or merchant" bind:value={f.q} oninput={debounced} style="min-width:260px" />
   <select bind:value={f.flow} onchange={load}><option value="">Any flow</option>{#each FLOWS as fl}<option value={fl}>{fl}</option>{/each}</select>
@@ -40,7 +49,7 @@
           <td class="muted small">{x.posted_at}{#if x.pending}<span class="badge" style="margin-left:6px">pending</span>{/if}{#if x.transfer_group}<span class="badge" title="paired transfer" style="margin-left:6px">⇄</span>{/if}</td>
           <td>{x.merchant ?? x.description}<div class="mono">{x.description}</div></td>
           <td class="small">{x.account_name}<div class="muted small">{x.entity}</div></td>
-          <td class="small"><button class="btn" style="padding:2px 8px" onclick={() => setCategory(x)}>{x.category ?? '—'}</button></td>
+          <td class="small"><button class="btn" style="padding:2px 8px" title="Change category" onclick={() => (picking = x)}>{x.category ?? '—'}</button></td>
           <td class="inline-edit"><select value={x.flow} onchange={(e) => setFlow(x, (e.target as HTMLSelectElement).value)}>{#each FLOWS as fl}<option value={fl}>{fl}</option>{/each}</select></td>
           <td class="num" class:pos={x.amount > 0}>{money(x.amount, 2)}</td>
         </tr>
@@ -48,3 +57,7 @@
     </tbody>
   </table>
 </div>
+
+{#if picking}
+  <CategoryPicker txn={picking} onclose={() => (picking = null)} onapplied={applied} />
+{/if}
