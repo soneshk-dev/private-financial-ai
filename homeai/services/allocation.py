@@ -98,7 +98,7 @@ def allocation(conn: sqlite3.Connection, cfg: Config, today: str | None = None) 
             return                          # reported as sleeves, not against the policy
         for c, w in weights.items():
             by_class[c] = by_class.get(c, 0.0) + value * w
-        if how == "class" and (symbol or description):
+        if how == "class" and (symbol or description) and value >= 1:
             unknown.append({"symbol": symbol, "description": description, "value": round(value, 2), "account": acct["name"]})
 
     for r in pos_rows:
