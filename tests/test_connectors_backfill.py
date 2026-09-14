@@ -189,3 +189,28 @@ def test_backfill_from_old_schema(tmp_path, cfg, conn):
     # re-running is a no-op for transactions
     counts2 = backfill(conn, cfg, str(old_path), as_of="2026-09-08")
     assert counts2["transactions"] == 0 and counts2["transactions_existing"] == 5
+
+
+def test_market_parsers_and_upsert(conn, seeded):
+    from homeai.connectors.market import MarketConnector, _upsert_macro, _upsert_prices
+    from homeai.services import market as M
+    nas = {"data": {"symbol": "IAU", "tradesTable": {"rows": [
+        {"date": "09/11/2026", "close": "81.71"}, {"date": "09/10/2026", "close": "$81.27"}, {"date": "bad", "close": "x"}]}}}
+    rows = MarketConnector.parse_nasdaq(nas)
+    assert rows == [("2026-09-11", 81.71), ("2026-09-10", 81.27)]
+    tre = 'Date,"1 Mo","3 Mo","2 Yr","10 Yr","30 Yr"\n09/11/2026,3.93,4.07,4.63,4.96,5.35\n09/10/2026,3.9,4.05,4.6,4.9,\n'
+    t = MarketConnector.parse_treasury(tre)
+    assert t["ust_10y"] == [("2026-09-11", 4.96), ("2026-09-10", 4.9)] and t["ust_30y"] == [("2026-09-11", 5.35)]
+    html = ("<tr> <td class='B6'>&nbsp;&nbsp;2026 Sep- 7 to Sep-11</td> <td class='B3'>62.1</td> <td class='B3'></td>"
+            " <td class='B3'>61.5</td> <td class='B3'>60.9</td> <td class='B3'>60.2</td> </tr>")
+    e = MarketConnector.parse_eia(html)
+    assert e == [("2026-09-07", 62.1), ("2026-09-09", 61.5), ("2026-09-10", 60.9), ("2026-09-11", 60.2)]
+    conn.execute("BEGIN")
+    _upsert_prices(conn, "IAU", rows, "nasdaq"); _upsert_prices(conn, "IAU", rows, "nasdaq")
+    _upsert_macro(conn, "wti_usd", e, "eia")
+    conn.execute("COMMIT")
+    assert M.latest_price(conn, "IAU") == {"as_of": "2026-09-11", "close": 81.71}
+    assert conn.execute("SELECT COUNT(*) FROM prices_daily").fetchone()[0] == 2
+    m = M.macro(conn)[0]
+    assert m["series"] == "wti_usd" and m["value"] == 60.2 and round(m["change"], 1) == -1.9
+    assert "SPY" in MarketConnector(seeded and __import__("homeai.config", fromlist=["x"]).load_config()).symbols_to_price(conn, {"benchmarks": ["SPY"]})

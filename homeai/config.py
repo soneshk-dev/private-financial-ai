@@ -198,6 +198,21 @@ class TaxConfig(BaseModel):
     state_payment_patterns: list[str] = ["DEPT OF REV", "DEPT OF REVENUE"]
 
 
+class PortfolioConfig(BaseModel):
+    """Seed values for the portfolio settings. The live values are edited in the app and stored
+    in the ledger's settings table; these only apply until the user saves there."""
+    thesis_cap_pct: float = 15                 # of investable (core + thesis), excluding reserve and earmarked
+    drift_band_pct: float = 5
+    crypto_in_policy: bool = True
+    never_sell: list[str] = []                 # symbols the rebalancer must not propose selling
+    policy: dict[str, float] = {"us_equity": 35, "intl_equity": 15, "bonds": 15, "gold": 10,
+                                "btc": 15, "other_crypto": 5, "cash": 5}
+    exposures: dict[str, dict[str, float]] = {}   # symbol or description substring -> {class: weight}
+    account_roles: dict[str, dict[str, Any]] = {} # account id or name substring -> {role, tradability, restrictions, tax_treatment}
+    benchmarks: list[str] = ["SPY", "AGG"]        # always priced
+    macro_series: list[str] = ["wti_usd", "ust_10y", "ust_2y", "ust_3m", "ust_30y", "btc_usd", "eth_usd"]
+
+
 class AlertsConfig(BaseModel):
     aave_hf_below: float = 1.5
     budget_over: bool = True
@@ -216,6 +231,7 @@ class Config(BaseModel):
     runway: RunwayConfig = RunwayConfig()
     tax: TaxConfig = TaxConfig()
     alerts: AlertsConfig = AlertsConfig()
+    portfolio: PortfolioConfig = PortfolioConfig()
     secrets_dir: Path = Path("~/.home-ai-secrets")
     timezone: str = "America/Chicago"
     default_entity: str = "personal"

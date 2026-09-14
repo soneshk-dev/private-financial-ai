@@ -7,6 +7,7 @@ from .base import Connector
 def build_connectors(cfg: Config) -> list[Connector]:
     from .bitcoin import BitcoinConnector
     from .fina import FinaConnector
+    from .market import MarketConnector
     from .plaid import PlaidConnector
     from .zerion import ZerionConnector
-    return [PlaidConnector(cfg), FinaConnector(cfg), ZerionConnector(cfg), BitcoinConnector(cfg)]
+    return [PlaidConnector(cfg), FinaConnector(cfg), ZerionConnector(cfg), BitcoinConnector(cfg), MarketConnector(cfg)]

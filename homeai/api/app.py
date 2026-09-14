@@ -19,7 +19,7 @@ from ..config import Config, load_config
 from ..db import connect, migrate
 from ..ledger.accounts import set_locked
 from ..ledger.transactions import set_override
-from ..services import cashflow, categories, health, overview, portfolio
+from ..services import allocation, cashflow, categories, health, market, overview, portfolio, portfolio_settings
 
 
 class AccountPatch(BaseModel):
@@ -191,6 +191,30 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if not categories.delete_rule(conn, rule_id):
             raise HTTPException(404, "rule not found")
         return {"ok": True}
+
+    # --- Portfolio: allocation, settings, market data ---------------------------
+    @app.get("/api/portfolio/allocation")
+    def api_allocation(conn: sqlite3.Connection = Depends(db)):
+        return allocation.allocation(conn, cfg)
+
+    @app.get("/api/portfolio/settings")
+    def api_portfolio_settings(conn: sqlite3.Connection = Depends(db)):
+        return portfolio_settings.get_settings(conn, cfg)
+
+    @app.put("/api/portfolio/settings")
+    def api_portfolio_settings_put(body: dict, conn: sqlite3.Connection = Depends(db)):
+        try:
+            return portfolio_settings.save_settings(conn, cfg, body)
+        except (ValueError, TypeError) as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/market/macro")
+    def api_market_macro(days: int = 30, conn: sqlite3.Connection = Depends(db)):
+        return market.macro(conn, days)
+
+    @app.get("/api/market/prices/{symbol}")
+    def api_market_prices(symbol: str, days: int = 60, conn: sqlite3.Connection = Depends(db)):
+        return market.price_history(conn, symbol.upper(), days)
 
     # --- Plan: business, runway, taxes, goals -----------------------------------
     from ..services import business, goals, runway, taxes

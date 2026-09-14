@@ -30,6 +30,12 @@ export type MergeSuggestion = { from: string; to: string; n: number; last: strin
 export type CategoryRule = { id: number; pattern: string; match_kind: string; category: string; flow_type: string | null; priority: number; source: string | null; created_at: string };
 export type Similar = { merchant: string; n: number; categories: { category: string | null; n: number; total: number }[]; rule: { id: number; category: string } | null };
 export type CategoryResult = { id: string; category: string; scope: 'one' | 'merchant'; merchant: string; affected: number; rule_id: number | null };
+export type AllocRow = { class: string; label: string; value: number; pct: number | null; policy_pct: number | null; drift_pct: number | null; drift_value: number | null; out_of_band?: boolean; side?: boolean };
+export type RegistryAccount = { id: string; name: string; kind: string; institution: string | null; asset_class: string; balance: number; balance_as_of: string | null; role: string; tax_treatment: string; tradability: string; restrictions: string[]; overridden: boolean };
+export type Holding = { account_id: string; account_name: string; role: string; tax_treatment: string; symbol: string | null; description: string | null; value: number; quantity: number | null; price: number | null; cost_basis: number | null; classes: Record<string, number>; how: string };
+export type PortfolioSettings = { thesis_cap_pct: number; drift_band_pct: number; crypto_in_policy: boolean; never_sell: string[]; policy: Record<string, number>; exposures: Record<string, Record<string, number>>; account_roles: Record<string, { role?: string; tradability?: string; tax_treatment?: string; restrictions?: string[] }>; benchmarks: string[]; macro_series: string[] };
+export type Allocation = { as_of: string | null; investable: number; sleeves: Record<string, number>; thesis_cap: number; thesis_used: number; by_class: AllocRow[]; holdings: Holding[]; unclassified: { symbol: string | null; description: string | null; value: number; account: string }[]; settings: PortfolioSettings; accounts: RegistryAccount[] };
+export type Macro = { series: string; label: string; as_of: string; value: number; prior: number; prior_as_of: string; change: number; history: { as_of: string; value: number }[] };
 export type Model = { name: string; base_url: string; reachable: boolean; model: string | null; default: boolean; fallback: boolean };
 export type Conversation = { id: string; title: string | null; provider: string | null; model: string | null; created_at: string; updated_at: string; n?: number; messages?: Message[] };
 export type Message = { id?: number; role: 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: any[] | null; name?: string | null };
@@ -73,6 +79,10 @@ export const api = {
   renameCategory: (from_category: string, to_category: string, allow_new = false) =>
     j<{ from: string; to: string; affected: number; rules: number }>('/api/categories/rename', { method: 'POST', body: JSON.stringify({ from_category, to_category, allow_new }) }),
   deleteRule: (id: number) => j<{ ok: boolean }>(`/api/categories/rules/${id}`, { method: 'DELETE' }),
+  allocation: () => j<Allocation>('/api/portfolio/allocation'),
+  portfolioSettings: () => j<PortfolioSettings>('/api/portfolio/settings'),
+  savePortfolioSettings: (patch: Partial<PortfolioSettings>) => j<PortfolioSettings>('/api/portfolio/settings', { method: 'PUT', body: JSON.stringify(patch) }),
+  macro: (days = 30) => j<Macro[]>(`/api/market/macro${q({ days })}`),
   positions: () => j<Positions>('/api/positions'),
   crypto: () => j<Crypto>('/api/crypto'),
   sync: (only?: string) => j<any>(`/api/sync${q({ only })}`, { method: 'POST' }),

@@ -1,3 +1,4 @@
+import pytest
 from datetime import date
 
 from homeai.config import EntityDef, EntityRule, GoalDef, IncomeDef
@@ -96,3 +97,33 @@ def test_alerts_evaluate(cfg, conn, seeded):
     # dedupe: nothing configured for telegram → not sent, nothing recorded
     res = alerts.send_new(conn, cfg, list(alerts.evaluate(conn, cfg, today=TODAY)), today=TODAY)
     assert res["sent"] == 0 and conn.execute("SELECT COUNT(*) FROM alerts_sent").fetchone()[0] == 0
+
+
+def test_portfolio_settings_and_allocation(cfg, conn, seeded):
+    from homeai.services import allocation as A, portfolio_settings as S
+    s = S.get_settings(conn, cfg)
+    assert s["thesis_cap_pct"] == 15 and abs(sum(s["policy"].values()) - 100) < 0.5
+    with pytest.raises(ValueError):
+        S.save_settings(conn, cfg, {"policy": {"us_equity": 50, "bonds": 40}})      # not 100
+    with pytest.raises(ValueError):
+        S.save_settings(conn, cfg, {"policy": {"stocks": 100}})                      # unknown class
+    s = S.save_settings(conn, cfg, {"thesis_cap_pct": 20, "never_sell": ["btc"],
+                                    "policy": {"us_equity": 60, "bonds": 20, "cash": 20},
+                                    "account_roles": {seeded["brok"]: {"role": "thesis", "tradability": "open"}}})
+    assert s["thesis_cap_pct"] == 20 and s["never_sell"] == ["BTC"]
+    reg = {a["id"]: a for a in S.account_registry(conn, s)}
+    assert reg[seeded["brok"]]["role"] == "thesis" and reg[seeded["brok"]]["tax_treatment"] == "taxable"
+    assert reg[seeded["chk"]]["role"] == "reserve" and reg[seeded["chk"]]["tradability"] == "cash"
+    assert reg[seeded["wallet"]]["tradability"] == "manual"
+    w, how = A.classify_position("VTI", "Vanguard Total Stock Market ETF", "etf", {})
+    assert w == {"us_equity": 1} and how == "symbol"
+    w, how = A.classify_position(None, "Nt Aggr Bd Idx Nl 4", "fund", {})
+    assert w == {"bonds": 1} and how == "name"
+    w, how = A.classify_position("XYZ", "Something odd", "equity", {"XYZ": {"gold": 1}})
+    assert w == {"gold": 1} and how == "user"
+    out = A.allocation(conn, cfg)
+    assert out["investable"] > 0 and out["sleeves"]["thesis"] > 0 and out["sleeves"]["reserve"] > 0
+    classes = {r["class"]: r for r in out["by_class"]}
+    assert classes["us_equity"]["policy_pct"] == 60 and classes["us_equity"]["drift_pct"] is not None
+    assert abs(sum(r["pct"] or 0 for r in out["by_class"]) - 100) < 0.5
+    assert out["thesis_cap"] == round(out["investable"] * 0.2, 2)

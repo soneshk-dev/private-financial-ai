@@ -86,6 +86,30 @@ def _txn_override(conn, cfg, args) -> dict[str, Any]:
     return {**dict(row), **{k: v for k, v in out.items() if k in ("scope", "merchant", "affected", "rule_id")}}
 
 
+def _alloc_summary(conn, cfg) -> dict[str, Any]:
+    from ..services.allocation import allocation
+    out = allocation(conn, cfg)
+    out.pop("holdings", None)
+    out["accounts"] = [{k: a[k] for k in ("id", "name", "kind", "role", "tax_treatment", "tradability", "restrictions", "balance")}
+                       for a in out["accounts"]]
+    return out
+
+
+def _set_portfolio_settings(conn, cfg, args) -> dict[str, Any]:
+    from ..services.portfolio_settings import save_settings
+    try:
+        return save_settings(conn, cfg, {k: v for k, v in args.items() if v is not None})
+    except (ValueError, TypeError) as e:
+        return {"error": str(e)}
+
+
+def _market(conn, cfg, args) -> dict[str, Any]:
+    from ..services.market import latest_price, macro
+    m = [{k: v for k, v in row.items() if k != "history"} for row in macro(conn)]
+    prices = {s.upper(): latest_price(conn, s.upper()) for s in (args.get("symbols") or [])}
+    return {"macro": m, "prices": prices}
+
+
 def _categories(conn, cfg, args) -> dict[str, Any]:
     from ..services import categories
     return {t["level1"]: [s["name"] for s in t["subs"]] for t in categories.taxonomy(conn)}
@@ -169,6 +193,20 @@ TOOLS: list[Tool] = [
          " listed caveats, not advice.", _obj(), lambda conn, cfg, a: taxes.estimate(conn, cfg)),
     Tool("get_goals", "Goals with current amount, target, percent complete, months left and needed monthly saving.",
          _obj(), lambda conn, cfg, a: goals.progress(conn)),
+    Tool("get_allocation", "Look-through portfolio allocation: value by policy class (US/intl/EM equity, bonds, gold,"
+         " BTC, ETH, other crypto, cash) vs the policy targets with drift, sleeve totals (reserve/core/thesis/earmarked),"
+         " the thesis cap and how much of it is used, and every account's role, tax treatment and tradability.",
+         _obj(), lambda conn, cfg, a: _alloc_summary(conn, cfg)),
+    Tool("get_portfolio_settings", "Editable portfolio variables: thesis_cap_pct, drift_band_pct, crypto_in_policy,"
+         " never_sell, policy targets, exposures, account_roles.", _obj(),
+         lambda conn, cfg, a: __import__('homeai.services.portfolio_settings', fromlist=['x']).get_settings(conn, cfg)),
+    Tool("set_portfolio_settings", "Change portfolio variables (partial update; policy must sum to 100).",
+         _obj({"thesis_cap_pct": {"type": "number"}, "drift_band_pct": {"type": "number"},
+               "crypto_in_policy": {"type": "boolean"}, "never_sell": {"type": "array", "items": {"type": "string"}},
+               "policy": {"type": "object"}, "exposures": {"type": "object"}, "account_roles": {"type": "object"}}),
+         _set_portfolio_settings, mutating=True),
+    Tool("get_market", "Latest macro series (WTI crude, Treasury yields, BTC, ETH) with one-month change, and the latest"
+         " price for any requested symbols.", _obj({"symbols": {"type": "array", "items": {"type": "string"}}}), _market),
     Tool("get_categories", "The category taxonomy ('Level 1 > Sub') a transaction may be assigned to. Call before"
          " set_transaction_override with a category so the name matches exactly.", _obj(), _categories),
     Tool("set_transaction_override", "Correct a transaction's flow_type, category ('Level 1 > Sub' from get_categories)"

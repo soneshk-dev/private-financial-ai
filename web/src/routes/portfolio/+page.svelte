@@ -1,13 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Positions, type Crypto } from '$lib/api';
+  import { api, type Positions, type Crypto, type Allocation, type Macro } from '$lib/api';
   import { money, compact, KIND_LABEL, titleCase } from '$lib/format';
   import StatTile from '$lib/components/StatTile.svelte';
+  import AllocationPanel from '$lib/components/AllocationPanel.svelte';
 
-  let pos: Positions | null = $state(null);
-  let cr: Crypto | null = $state(null);
+  let pos = $state<Positions | null>(null);
+  let cr = $state<Crypto | null>(null);
+  let look = $state<Allocation | null>(null);
+  let macro = $state<Macro[]>([]);
   let loading = $state(true);
-  onMount(async () => { [pos, cr] = await Promise.all([api.positions(), api.crypto()]); loading = false; });
+  async function loadAlloc() { look = await api.allocation(); }
+  onMount(async () => { [pos, cr, look, macro] = await Promise.all([api.positions(), api.crypto(), api.allocation(), api.macro().catch(() => [])]); loading = false; });
+  const fmtMacro = (m: Macro) => m.series.startsWith('ust') ? `${m.value.toFixed(2)}%` : money(m.value, m.value < 1000 ? 2 : 0);
+  const fmtChange = (m: Macro) => m.series.startsWith('ust') ? `${m.change > 0 ? '+' : ''}${m.change.toFixed(2)} pts` : `${m.change > 0 ? '+' : ''}${Math.round((m.change / m.prior) * 100)}%`;
 
   // Part-to-whole: one stacked horizontal bar with a legend (not a donut).
   const alloc = $derived(pos ? Object.entries(pos.allocation).filter(([, v]) => v > 0).slice(0, 8) : []);
@@ -17,7 +23,19 @@
 
 <div class="page-head"><h1>Portfolio</h1><div class="sub">{#if pos?.accounts.length}positions as of {pos.accounts[0].as_of}{/if}</div></div>
 
-<div class="grid kpis" class:loading>
+{#if macro.length}
+  <div class="filters" style="gap:14px">
+    {#each macro.filter((m) => ['wti_usd', 'ust_2y', 'ust_10y', 'btc_usd'].includes(m.series)) as m}
+      <span class="badge" title="as of {m.as_of}; change since {m.prior_as_of}">{m.label.replace(/ \(.*\)/, '')} <b>{fmtMacro(m)}</b> <span class="muted">{fmtChange(m)}</span></span>
+    {/each}
+  </div>
+{/if}
+
+{#if look}
+  <div class:loading><AllocationPanel alloc={look} onchanged={loadAlloc} /></div>
+{/if}
+
+<div class="grid kpis" class:loading style="margin-top:16px">
   <StatTile label="Positions (Fidelity + wallets)" value={pos?.total} hero />
   <StatTile label="Crypto (all wallets + exchanges)" value={cr?.total} />
   <StatTile label="Known cost basis" value={pos?.cost_basis_known} sub="taxable accounts only" />

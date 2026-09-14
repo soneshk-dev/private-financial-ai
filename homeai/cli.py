@@ -62,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     al = sub.add_parser("alerts", help="evaluate alerts")
     al.add_argument("--send", action="store_true")
     rt = sub.add_parser("retag", help="apply entity rules to all transactions")
+    sub.add_parser("allocation", help="look-through allocation vs policy")
+    sub.add_parser("market", help="latest macro series")
     ct = sub.add_parser("categories", help="category taxonomy with usage counts")
     ct.add_argument("--suggest", action="store_true", help="propose merges for sub-categories outside the core taxonomy")
     ct.add_argument("--apply", action="store_true", help="with --suggest: apply every suggestion")
@@ -224,6 +226,20 @@ def main(argv: list[str] | None = None) -> int:
         from .services.business import apply_entity_rules, sync_entities
         conn.execute("BEGIN"); sync_entities(conn, cfg); n = apply_entity_rules(conn, cfg); conn.execute("COMMIT")
         _json({"retagged": n})
+    elif a.cmd == "allocation":
+        from .services.allocation import allocation
+        out = allocation(conn, cfg)
+        print(f"investable {out['investable']:,.0f}  sleeves {out['sleeves']}  thesis cap {out['thesis_cap']:,.0f} used {out['thesis_used']:,.0f}")
+        for r in out["by_class"]:
+            print(f"  {r['label']:<22} {r['value']:>12,.0f}  {r['pct'] if r['pct'] is not None else '-':>6}%  policy {r['policy_pct'] if r['policy_pct'] is not None else '-':>4}  drift {r['drift_pct'] if r['drift_pct'] is not None else '-'}")
+        if out["unclassified"]:
+            print("unclassified (defaulted by asset class):")
+            for u in out["unclassified"][:15]:
+                print(f"  {u['symbol'] or '':<8} {u['description'][:50]:<50} {u['value']:>10,.0f}  {u['account']}")
+    elif a.cmd == "market":
+        from .services.market import macro
+        for m in macro(conn):
+            print(f"  {m['label']:<26} {m['value']:>10,.2f}  ({m['change']:+.2f} since {m['prior_as_of']})")
     elif a.cmd == "categories":
         from .services.categories import rename_category, suggest_merges, taxonomy
         if a.suggest:
