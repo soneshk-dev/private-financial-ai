@@ -7,6 +7,7 @@ only seeds them. The registry tells the rest of Phase F what each account is for
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Any
 
@@ -31,6 +32,9 @@ _TAX_BY_KIND = {"retirement_401k": "tax_deferred", "ira": "tax_deferred", "defer
 _TRADE_BY_KIND = {"retirement_401k": "menu", "deferred_comp": "menu", "crypto_wallet": "manual",
                   "crypto_exchange": "manual", "checking": "cash", "savings": "cash", "money_market": "cash",
                   "cd": "cash", "cash_mgmt": "cash", "real_estate": "locked", "vehicle": "locked", "other": "locked"}
+
+
+_SELF_DIRECTED = re.compile(r"brokerage\s*link|self.directed|pcra", re.I)   # a brokerage window inside a plan
 
 
 def defaults(cfg: Config) -> dict[str, Any]:
@@ -142,7 +146,8 @@ def account_registry(conn: sqlite3.Connection, settings: dict[str, Any]) -> list
                  "balance_as_of": a.get("balance_as_of"),
                  "role": ov.get("role") or _ROLE_BY_KIND.get(kind, "core"),
                  "tax_treatment": ov.get("tax_treatment") or _TAX_BY_KIND.get(kind, "taxable"),
-                 "tradability": ov.get("tradability") or _TRADE_BY_KIND.get(kind, "open"),
+                 "tradability": ov.get("tradability") or ("open" if _SELF_DIRECTED.search(a["name"] or "")
+                                                          else _TRADE_BY_KIND.get(kind, "open")),
                  "restrictions": ov.get("restrictions") or ([] if kind not in ("retirement_401k", "roth_401k")
                                                             else ["no_short", "no_margin", "no_options"]),
                  "overridden": bool(ov)}
