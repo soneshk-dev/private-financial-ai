@@ -74,6 +74,8 @@ class FlowRule(BaseModel):
 class PlaidConfig(BaseModel):
     client_name: str = "homeai"
     products: list[str] = ["transactions"]
+    extra_products: list[str] = ["investments", "liabilities"]   # asked for where the institution supports them
+    investment_txn_days: int = 730
     country_codes: list[str] = ["US"]
     conf_file: str = "plaid.conf"
     key_file: str = "plaid_encryption.key"

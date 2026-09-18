@@ -268,6 +268,19 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 return p.link_token_for_update(conn, connection_id, redirect_uri)
         return p.create_link_token(redirect_uri=redirect_uri)
 
+    @app.post("/api/plaid/refresh")
+    def api_plaid_refresh(connection_id: str, conn: sqlite3.Connection = Depends(db)):
+        """After Link update mode: re-read which products the item is consented for."""
+        from ..connectors.plaid import PlaidConnector
+        try:
+            conn.execute("BEGIN")
+            products = PlaidConnector(cfg).refresh_products(conn, connection_id)
+            conn.execute("COMMIT")
+        except KeyError:
+            conn.execute("ROLLBACK")
+            raise HTTPException(404, "unknown connection")
+        return {"connection_id": connection_id, "products": products}
+
     @app.post("/api/plaid/exchange")
     def api_plaid_exchange(body: Exchange, conn: sqlite3.Connection = Depends(db)):
         from ..connectors.plaid import PlaidConnector
@@ -412,7 +425,9 @@ document.getElementById('go').onclick = async () => {
   const j = await r.json();
   if (!j.link_token) { out.textContent = JSON.stringify(j, null, 2); return; }
   const handler = Plaid.create({token: j.link_token, onSuccess: async (public_token) => {
-    if (cid) { out.textContent = 'Updated. Run a sync.'; return; }
+    if (cid) { out.textContent = 'Updated. Refreshing consent…';
+      const u = await fetch('/api/plaid/refresh?connection_id=' + encodeURIComponent(cid), {method:'POST'});
+      out.textContent = JSON.stringify(await u.json(), null, 2) + '\n\nNow run a sync (Accounts page → Sync now).'; return; }
     const x = await fetch('/api/plaid/exchange', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({public_token})});
     out.textContent = JSON.stringify(await x.json(), null, 2);

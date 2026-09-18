@@ -1,4 +1,4 @@
-"""Plaid: banks, cards, mortgages (and Fidelity once the OAuth institution is approved).
+"""Plaid: banks, cards, mortgages, and brokerages (holdings + investment transactions where consented).
 
 Access tokens are Fernet-encrypted at rest with a key file in the secrets dir.
 Transactions use ``/transactions/sync`` with a per-connection cursor; a posted
@@ -80,10 +80,15 @@ class PlaidConnector:
             country_codes=[CountryCode(c) for c in self.cfg.plaid.country_codes],
             language="en",
         )
+        extra = [Products(p) for p in self.cfg.plaid.extra_products]
         if access_token:
             kwargs["access_token"] = access_token          # update mode (re-auth / add consent)
+            if extra:
+                kwargs["additional_consented_products"] = extra
         else:
             kwargs["products"] = [Products(p) for p in self.cfg.plaid.products]
+            if extra:
+                kwargs["required_if_supported_products"] = extra
         if redirect_uri:
             kwargs["redirect_uri"] = redirect_uri
         resp = self.client().link_token_create(LinkTokenCreateRequest(**kwargs))
@@ -120,6 +125,22 @@ class PlaidConnector:
         n = self._sync_accounts(conn, ex.item_id, ex.access_token, inst_name, date.today().isoformat())
         return {"connection_id": ex.item_id, "institution": inst_name, "accounts": n, "products": products}
 
+    def refresh_products(self, conn: sqlite3.Connection, connection_id: str, token: str | None = None) -> list[str]:
+        """Re-read what the item is consented for (it changes after Link update mode) into connections.meta."""
+        from plaid.model.item_get_request import ItemGetRequest
+        row = conn.execute("SELECT secret_enc, meta FROM connections WHERE id = ?", (connection_id,)).fetchone()
+        if not row:
+            raise KeyError(connection_id)
+        item = self.client().item_get(ItemGetRequest(access_token=token or self.decrypt(row["secret_enc"]))).item
+        products = sorted({str(p) for p in (getattr(item, "consented_products", None) or [])}
+                          | {str(p) for p in (getattr(item, "billed_products", None) or [])}
+                          | {str(p) for p in (getattr(item, "products", None) or [])})
+        meta = json.loads(row["meta"] or "{}")
+        meta["products"] = products
+        meta["available_products"] = sorted(str(p) for p in (getattr(item, "available_products", None) or []))
+        conn.execute("UPDATE connections SET meta = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now_iso(), connection_id))
+        return products
+
     def remove_connection(self, conn: sqlite3.Connection, connection_id: str) -> None:
         from plaid.model.item_remove_request import ItemRemoveRequest
         row = conn.execute("SELECT secret_enc FROM connections WHERE id = ?", (connection_id,)).fetchone()
@@ -151,9 +172,10 @@ class PlaidConnector:
                 token = self.decrypt(r["secret_enc"])
                 d["accounts"] = self._sync_accounts(conn, r["id"], token, r["institution"], as_of)
                 d.update(self._sync_transactions(conn, r["id"], token, r["cursor"]))
-                meta = json.loads(r["meta"] or "{}")
-                if "investments" in (meta.get("products") or []):
+                products = self.refresh_products(conn, r["id"], token)
+                if "investments" in products:
                     d["holdings"] = self._sync_holdings(conn, r["id"], token, as_of)
+                    d.update(self._sync_investment_transactions(conn, r["id"], token))
                 conn.execute("UPDATE connections SET status='active', error_code=NULL, error_message=NULL,"
                              " last_success_at=?, updated_at=? WHERE id=?", (now_iso(), now_iso(), r["id"]))
                 result.rows_written += d.get("added", 0) + d.get("modified", 0) + d.get("accounts", 0)
@@ -259,6 +281,72 @@ class PlaidConnector:
             if aid:
                 n += replace_positions(conn, aid["id"], as_of, rows, "plaid")
         return n
+
+
+    def _sync_investment_transactions(self, conn, connection_id: str, token: str) -> dict[str, int]:
+        """Buys, sells, dividends, fees and transfers inside investment accounts. Keyed by
+        investment_transaction_id, so re-reading the window is idempotent."""
+        from datetime import timedelta
+        from plaid.model.investments_transactions_get_request import InvestmentsTransactionsGetRequest
+        from plaid.model.investments_transactions_get_request_options import InvestmentsTransactionsGetRequestOptions
+        end = date.today()
+        first = conn.execute("SELECT 1 FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.connection_id = ?"
+                             " AND json_extract(t.meta, '$.investment') = 1 LIMIT 1", (connection_id,)).fetchone() is None
+        start = end - timedelta(days=self.cfg.plaid.investment_txn_days if first else 45)
+        accounts = {r["source_account_id"]: r["id"] for r in conn.execute(
+            "SELECT id, source_account_id FROM accounts WHERE source = 'plaid' AND connection_id = ?", (connection_id,))}
+        added = skipped = offset = 0
+        total = None
+        while total is None or offset < total:
+            resp = self.client().investments_transactions_get(InvestmentsTransactionsGetRequest(
+                access_token=token, start_date=start, end_date=end,
+                options=InvestmentsTransactionsGetRequestOptions(count=500, offset=offset)))
+            total = resp.total_investment_transactions
+            secs = {s.security_id: s for s in resp.securities}
+            if offset == 0:
+                store_raw(conn, self.name, "investments_transactions_get", connection_id,
+                          {"total": total, "sample": [t.to_dict() for t in resp.investment_transactions[:3]]})
+            for t in resp.investment_transactions:
+                aid = accounts.get(t.account_id)
+                if not aid:
+                    continue
+                rec = investment_txn_record(t.to_dict(), (secs.get(t.security_id).to_dict() if secs.get(t.security_id) else None))
+                _, status = upsert_transaction(conn, source="plaid", source_txn_id=rec["id"], account_id=aid,
+                                               posted_at=rec["date"], amount=rec["amount"], currency=rec["currency"],
+                                               description=rec["description"], merchant=rec["symbol"] or rec["description"],
+                                               category=rec["category"], flow_type=rec["flow"], meta=rec["meta"])
+                added += status == "inserted"
+                skipped += status == "skipped"
+            if not resp.investment_transactions:
+                break
+            offset += len(resp.investment_transactions)
+        return {"investment_txns_added": added, "investment_txns_skipped": skipped}
+
+
+_INV_FLOW = {"buy": "investment_buy", "sell": "investment_sell", "fee": "fee", "transfer": "transfer", "cancel": "unknown"}
+_INV_CASH_SUBTYPE = {"dividend": "dividend", "qualified dividend": "dividend", "non-qualified dividend": "dividend",
+                     "interest": "interest", "interest receivable": "interest", "long-term capital gain": "dividend",
+                     "short-term capital gain": "dividend", "contribution": "transfer", "deposit": "transfer",
+                     "withdrawal": "transfer", "tax": "tax", "tax withheld": "tax", "account fee": "fee",
+                     "management fee": "fee", "fund fee": "fee", "legal fee": "fee", "transfer fee": "fee", "trust fee": "fee",
+                     "margin expense": "fee", "miscellaneous fee": "fee", "dividend reinvestment": "investment_buy",
+                     "interest reinvestment": "investment_buy"}
+
+
+def investment_txn_record(t: dict[str, Any], sec: dict[str, Any] | None) -> dict[str, Any]:
+    """Map a Plaid investment transaction to ledger fields. Plaid's amount is positive when cash
+    leaves the account (a buy); the ledger is signed the other way."""
+    typ, sub = str(t.get("type") or "").lower(), str(t.get("subtype") or "").lower()
+    flow = _INV_CASH_SUBTYPE.get(sub) or _INV_FLOW.get(typ) or "unknown"
+    symbol = (sec or {}).get("ticker_symbol")
+    category = {"investment_buy": "Financial Services > Investment Trades", "investment_sell": "Financial Services > Investment Sales",
+                "dividend": "Income > Dividends", "interest": "Income > Interest Earned", "fee": "Financial Services > Fees",
+                "tax": "Financial Services > Tax Payment", "transfer": "Transfers > Internal Transfer"}.get(flow, "Uncategorized")
+    return {"id": t["investment_transaction_id"], "date": str(t["date"])[:10], "amount": -float(t.get("amount") or 0),
+            "currency": t.get("iso_currency_code") or "USD", "description": t.get("name") or f"{typ} {symbol or ''}".strip(),
+            "symbol": symbol, "flow": flow, "category": category,
+            "meta": {"investment": 1, "type": typ, "subtype": sub, "symbol": symbol, "security_name": (sec or {}).get("name"),
+                     "quantity": t.get("quantity"), "price": t.get("price"), "fees": t.get("fees")}}
 
 
 def _plaid_error(e: Exception) -> tuple[str, str]:

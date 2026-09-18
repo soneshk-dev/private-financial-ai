@@ -214,3 +214,15 @@ def test_market_parsers_and_upsert(conn, seeded):
     m = M.macro(conn)[0]
     assert m["series"] == "wti_usd" and m["value"] == 60.2 and round(m["change"], 1) == -1.9
     assert "SPY" in MarketConnector(seeded and __import__("homeai.config", fromlist=["x"]).load_config()).symbols_to_price(conn, {"benchmarks": ["SPY"]})
+
+
+def test_plaid_investment_txn_mapping():
+    from homeai.connectors.plaid import investment_txn_record as rec
+    buy = rec({"investment_transaction_id": "i1", "date": "2026-09-02", "amount": 1000.0, "type": "buy", "subtype": "buy",
+               "name": "YOU BOUGHT TLT", "quantity": 11, "price": 90.9, "fees": 0}, {"ticker_symbol": "TLT", "name": "iShares 20+"})
+    assert buy["amount"] == -1000.0 and buy["flow"] == "investment_buy" and buy["meta"]["symbol"] == "TLT" and buy["meta"]["investment"] == 1
+    div = rec({"investment_transaction_id": "i2", "date": "2026-09-03", "amount": -42.5, "type": "cash", "subtype": "dividend", "name": "DIVIDEND"}, None)
+    assert div["amount"] == 42.5 and div["flow"] == "dividend" and div["category"] == "Income > Dividends"
+    assert rec({"investment_transaction_id": "i3", "date": "2026-09-03", "amount": 7, "type": "fee", "subtype": "management fee"}, None)["flow"] == "fee"
+    assert rec({"investment_transaction_id": "i4", "date": "2026-09-03", "amount": -500, "type": "cash", "subtype": "contribution"}, None)["flow"] == "transfer"
+    assert rec({"investment_transaction_id": "i5", "date": "2026-09-03", "amount": 50, "type": "buy", "subtype": "dividend reinvestment"}, None)["flow"] == "investment_buy"
