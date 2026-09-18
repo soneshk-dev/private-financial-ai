@@ -86,6 +86,7 @@ class FinaConfig(BaseModel):
     institution_filter: str | None = "Fidelity"
     skip_kinds: list[str] = []                # e.g. ["credit_card"] while another connector covers the card
     transaction_days: int = 120
+    until: str | None = None                  # YYYY-MM-DD: skip the connector after this date (subscription end)
 
 
 class ZerionConfig(BaseModel):

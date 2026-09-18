@@ -239,3 +239,11 @@ def test_txn_until_closes_an_account_to_new_rows(conn, seeded):
     _, c = upsert_transaction(conn, source="plaid", source_txn_id="u2", account_id=seeded["chk"], posted_at="2026-09-19", amount=-5, description="OUT")
     conn.execute("COMMIT")
     assert (a, b, c) == ("inserted", "skipped", "inserted")
+
+
+def test_fina_retires_after_until(cfg, conn):
+    from homeai.connectors.fina import FinaConnector
+    cfg.fina.until = "2026-10-10"
+    c = FinaConnector(cfg); c.api_key = "k"
+    r = c.sync(conn, cfg, "2026-10-11")
+    assert r.skipped and "retired" in r.detail["reason"]

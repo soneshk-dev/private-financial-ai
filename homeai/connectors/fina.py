@@ -114,6 +114,10 @@ class FinaConnector:
             result.skipped = True
             result.detail["reason"] = "not configured"
             return result
+        if cfg.fina.until and as_of > cfg.fina.until:
+            result.skipped = True
+            result.detail["reason"] = f"retired after {cfg.fina.until}"
+            return result
         inst_filter = cfg.fina.institution_filter
         ticker_map = _ticker_map(conn)
 
