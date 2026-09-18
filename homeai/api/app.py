@@ -427,7 +427,7 @@ document.getElementById('go').onclick = async () => {
   const handler = Plaid.create({token: j.link_token, onSuccess: async (public_token) => {
     if (cid) { out.textContent = 'Updated. Refreshing consent…';
       const u = await fetch('/api/plaid/refresh?connection_id=' + encodeURIComponent(cid), {method:'POST'});
-      out.textContent = JSON.stringify(await u.json(), null, 2) + '\n\nNow run a sync (Accounts page → Sync now).'; return; }
+      out.textContent = JSON.stringify(await u.json(), null, 2) + ' Now run a sync (Accounts page → Sync now).'; return; }
     const x = await fetch('/api/plaid/exchange', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({public_token})});
     out.textContent = JSON.stringify(await x.json(), null, 2);

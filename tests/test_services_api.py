@@ -151,3 +151,12 @@ def test_categories_core_keep_and_suggestions(conn, seeded):
     C.set_kept(conn, "Food & Dining > Grocery Shopping", False)
     assert C.suggest_merges(conn)
     assert C.rule_counts(conn) == {}
+
+
+def test_link_page_script_has_no_raw_newlines_in_strings():
+    """The page is a Python string; an escaped newline inside a JS string literal breaks the whole script."""
+    import re
+    from homeai.api.app import LINK_HTML
+    js = re.search(r"<script>\n(.*)</script></body>", LINK_HTML, re.S).group(1)
+    for line in js.splitlines():
+        assert line.count("'") % 2 == 0, line
