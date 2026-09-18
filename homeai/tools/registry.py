@@ -103,6 +103,39 @@ def _set_portfolio_settings(conn, cfg, args) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+def _theses(conn, cfg, args) -> dict[str, Any]:
+    from ..services import theses
+    return {"theses": theses.list_theses(conn, cfg, include_closed=bool(args.get("include_closed"))),
+            "budget": theses.budget_status(conn, cfg)}
+
+
+def _save_thesis(conn, cfg, args) -> dict[str, Any]:
+    from ..services import theses
+    a = dict(args)
+    try:
+        conn.execute("BEGIN"); slug = theses.save_thesis(conn, a.pop("slug", None), **a); conn.execute("COMMIT")
+    except (ValueError, TypeError) as e:
+        conn.execute("ROLLBACK"); return {"error": str(e)}
+    return {"slug": slug}
+
+
+def _save_leg(conn, cfg, args) -> dict[str, Any]:
+    from ..services import theses
+    a = dict(args)
+    try:
+        conn.execute("BEGIN"); leg = theses.save_leg(conn, a.pop("thesis_slug"), a.pop("id", None), **a); conn.execute("COMMIT")
+    except (KeyError, ValueError, TypeError) as e:
+        conn.execute("ROLLBACK"); return {"error": str(e)}
+    return {"id": leg}
+
+
+def _analyze(conn, cfg, args) -> dict[str, Any]:
+    from ..services.placement import analyze_expression
+    return analyze_expression(conn, cfg, symbols=list(args["symbols"]), amount=float(args["amount"]),
+                              holding_months=int(args.get("holding_months") or 12),
+                              expected_return_pct=float(args.get("expected_return_pct") or 10))
+
+
 def _market(conn, cfg, args) -> dict[str, Any]:
     from ..services.market import latest_price, macro
     m = [{k: v for k, v in row.items() if k != "history"} for row in macro(conn)]
@@ -205,6 +238,30 @@ TOOLS: list[Tool] = [
                "crypto_in_policy": {"type": "boolean"}, "never_sell": {"type": "array", "items": {"type": "string"}},
                "policy": {"type": "object"}, "exposures": {"type": "object"}, "account_roles": {"type": "object"}}),
          _set_portfolio_settings, mutating=True),
+    Tool("get_theses", "The user's short/mid-term investment theses: view, horizon, budget within the thesis cap, legs with"
+         " value and P&L, benchmark return, kill metrics with current values, plus the overall thesis budget.",
+         _obj({"include_closed": {"type": "boolean"}}), _theses),
+    Tool("save_thesis", "Create a thesis (name + view required) or update one by slug. budget_pct is a share of the thesis"
+         " cap. kill_metrics: [{series, op, level, note}] where series is a macro series (wti_usd, ust_10y, ust_2y, btc_usd)"
+         " or 'price:SYMBOL' and op is '>' or '<'. status: draft | active | closed.",
+         _obj({"slug": {"type": "string"}, "name": {"type": "string"}, "view": {"type": "string"},
+               "status": {"type": "string"}, "conviction": {"type": "integer"}, "budget_pct": {"type": "number"},
+               "horizon_start": {"type": "string"}, "horizon_end": {"type": "string"}, "benchmark": {"type": "string"},
+               "exit_rules": {"type": "string"}, "kill_metrics": {"type": "array", "items": {"type": "object"}},
+               "notes": {"type": "string"}}), _save_thesis, mutating=True),
+    Tool("save_thesis_leg", "Add a leg to a thesis, or update one by id (set closed_at to close it). direction is long or"
+         " underweight; these accounts cannot short. Leave quantity empty to track the position held in account_id.",
+         _obj({"thesis_slug": {"type": "string"}, "id": {"type": "integer"}, "symbol": {"type": "string"},
+               "direction": {"type": "string"}, "target_weight": {"type": "number"}, "account_id": {"type": "string"},
+               "opened_at": {"type": "string"}, "closed_at": {"type": "string"}, "entry_price": {"type": "number"},
+               "quantity": {"type": "number"}, "notes": {"type": "string"}}, ["thesis_slug"]), _save_leg, mutating=True),
+    Tool("analyze_expression", "Frame candidate instruments for a view: price and 1m/3m return, look-through class and the"
+         " policy drift after buying, what is already held, the best accounts to hold it in with the tax on the expected"
+         " gain (short vs long term, by account type), and whether it fits the remaining thesis budget. Does not pick"
+         " instruments; present the trade-offs.",
+         _obj({"symbols": {"type": "array", "items": {"type": "string"}}, "amount": {"type": "number"},
+               "holding_months": {"type": "integer"}, "expected_return_pct": {"type": "number"}}, ["symbols", "amount"]),
+         _analyze),
     Tool("get_market", "Latest macro series (WTI crude, Treasury yields, BTC, ETH) with one-month change, and the latest"
          " price for any requested symbols.", _obj({"symbols": {"type": "array", "items": {"type": "string"}}}), _market),
     Tool("get_categories", "The category taxonomy ('Level 1 > Sub') a transaction may be assigned to. Call before"

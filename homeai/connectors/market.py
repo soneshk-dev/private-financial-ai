@@ -106,6 +106,24 @@ class MarketConnector:
         r.raise_for_status()
         return r.json()
 
+    def fetch_symbol(self, conn: sqlite3.Connection, symbol: str, days: int = 200) -> int:
+        """On-demand history for one symbol (used when analysing something not yet held)."""
+        symbol = symbol.upper()
+        if not _TICKER.match(symbol):
+            return 0
+        classes = _load_classes(conn)
+        since = (date.today() - timedelta(days=days)).isoformat()
+        with self._client() as client:
+            for ac in ([classes[symbol]] if symbol in classes else []) + [c for c in ("etf", "stocks") if c != classes.get(symbol)]:
+                r = client.get(NASDAQ.format(symbol=symbol), params={"assetclass": ac, "fromdate": since, "limit": days})
+                r.raise_for_status()
+                rows = self.parse_nasdaq(r.json())
+                if rows:
+                    classes[symbol] = ac
+                    _save_classes(conn, classes)
+                    return _upsert_prices(conn, symbol, rows, "nasdaq")
+        return 0
+
     def symbols_to_price(self, conn: sqlite3.Connection, settings: dict[str, Any]) -> list[str]:
         syms = set(settings.get("benchmarks") or [])
         for r in conn.execute("SELECT DISTINCT p.symbol FROM positions_latest p JOIN accounts a ON a.id = p.account_id"

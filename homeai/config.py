@@ -190,6 +190,7 @@ class TaxConfig(BaseModel):
         [24800, 0.10], [100800, 0.12], [211400, 0.22], [403550, 0.24], [512450, 0.32], [768700, 0.35], [1e18, 0.37]]
     state_rate: float = 0.0495                 # flat state rate (Illinois)
     niit_threshold: float = 250000
+    ltcg_brackets: list[list[float]] = [[98900, 0.0], [613700, 0.15], [1e18, 0.20]]   # 2026 MFJ, by taxable income; verify
     prior_year_total_tax: float | None = None  # for the safe-harbour test
     prior_year_agi: float | None = None
     withholding_federal_ytd: float = 0         # not visible in the ledger (deposits are net)

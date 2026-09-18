@@ -36,6 +36,13 @@ export type Holding = { account_id: string; account_name: string; role: string; 
 export type PortfolioSettings = { thesis_cap_pct: number; drift_band_pct: number; crypto_in_policy: boolean; never_sell: string[]; policy: Record<string, number>; exposures: Record<string, Record<string, number>>; account_roles: Record<string, { role?: string; tradability?: string; tax_treatment?: string; restrictions?: string[] }>; benchmarks: string[]; macro_series: string[] };
 export type Allocation = { as_of: string | null; investable: number; sleeves: Record<string, number>; thesis_cap: number; thesis_used: number; by_class: AllocRow[]; holdings: Holding[]; unclassified: { symbol: string | null; description: string | null; value: number; account: string }[]; settings: PortfolioSettings; accounts: RegistryAccount[] };
 export type Macro = { series: string; label: string; as_of: string; value: number; prior: number; prior_as_of: string; change: number; history: { as_of: string; value: number }[] };
+export type KillMetric = { series: string; op: '>' | '<'; level: number; note?: string; value?: number | null; breached?: boolean; distance_pct?: number | null };
+export type ThesisLeg = { id: number; symbol: string; direction: string; account_id: string | null; account_name?: string | null; quantity: number | null; quantity_source?: string; entry_price: number | null; entry_price_used: number | null; price: number | null; price_as_of: string | null; value: number; pnl: number | null; return_pct: number | null; closed_at: string | null; notes: string | null };
+export type Thesis = { slug: string; name: string; view: string; status: string; conviction: number; budget_pct: number; budget: number; deployed: number; pnl: number | null; return_pct: number | null; over_budget: boolean; horizon_start: string | null; horizon_end: string | null; horizon_pct?: number; days_left?: number; expired?: boolean; benchmark: string | null; benchmark_return_pct?: number | null; exit_rules: string | null; notes: string | null; kill_metrics: KillMetric[]; kill_breached: boolean; legs: ThesisLeg[] };
+export type ThesisBudget = { cap: number; cap_pct: number; deployed: number; allocated_pct_of_cap: number; remaining: number };
+export type PlacementOption = { account_id: string; account: string; tax_treatment: string; tradability: string; restrictions: string[]; tax_rate_on_gain: number; tax_on_expected_gain: number; after_tax_gain: number; cash_available: number; funded_from_cash: boolean; already_holds: boolean; note: string };
+export type Candidate = { symbol: string; price: { as_of: string; close: number } | null; return_1m_pct: number | null; return_3m_pct: number | null; class: string; class_now_pct: number | null; class_after_pct: number | null; class_policy_pct: number | null; already_held: { account: string; value: number }[]; already_held_value: number; never_sell: boolean; placement: PlacementOption[] };
+export type Analysis = { amount: number; per_symbol: number; holding_months: number; expected_return_pct: number; candidates: Candidate[]; rates: { short_term_total: number; long_term_total: number; basis: string }; thesis_budget: ThesisBudget & { after_this: number; fits: boolean }; note: string };
 export type Model = { name: string; base_url: string; reachable: boolean; model: string | null; default: boolean; fallback: boolean };
 export type Conversation = { id: string; title: string | null; provider: string | null; model: string | null; created_at: string; updated_at: string; n?: number; messages?: Message[] };
 export type Message = { id?: number; role: 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: any[] | null; name?: string | null };
@@ -82,6 +89,11 @@ export const api = {
   allocation: () => j<Allocation>('/api/portfolio/allocation'),
   portfolioSettings: () => j<PortfolioSettings>('/api/portfolio/settings'),
   savePortfolioSettings: (patch: Partial<PortfolioSettings>) => j<PortfolioSettings>('/api/portfolio/settings', { method: 'PUT', body: JSON.stringify(patch) }),
+  theses: (closed = false) => j<{ theses: Thesis[]; budget: ThesisBudget }>(`/api/theses${q({ closed })}`),
+  saveThesis: (body: Record<string, unknown>) => j<{ slug: string }>('/api/theses', { method: 'POST', body: JSON.stringify(body) }),
+  saveLeg: (slug: string, body: Record<string, unknown>) => j<{ id: number }>(`/api/theses/${slug}/legs`, { method: 'POST', body: JSON.stringify(body) }),
+  deleteLeg: (slug: string, id: number) => j<any>(`/api/theses/${slug}/legs/${id}`, { method: 'DELETE' }),
+  analyze: (body: Record<string, unknown>) => j<Analysis>('/api/portfolio/analyze', { method: 'POST', body: JSON.stringify(body) }),
   macro: (days = 30) => j<Macro[]>(`/api/market/macro${q({ days })}`),
   positions: () => j<Positions>('/api/positions'),
   crypto: () => j<Crypto>('/api/crypto'),

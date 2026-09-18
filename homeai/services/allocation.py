@@ -137,10 +137,12 @@ def allocation(conn: sqlite3.Connection, cfg: Config, today: str | None = None) 
                      "drift_value": round(drift / 100 * investable, 0) if drift is not None else None,
                      "out_of_band": (abs(drift) > settings["drift_band_pct"]) if drift is not None else False})
     thesis_cap = investable * settings["thesis_cap_pct"] / 100
+    from .theses import list_theses            # deployed = open legs of active theses (+ any account given the thesis role)
+    legs_value = sum(t["deployed"] for t in list_theses(conn, cfg, thesis_cap=thesis_cap) if t["status"] == "active")
     return {"as_of": today or (pos_rows[0]["as_of"] if pos_rows else None),
             "investable": round(investable, 2),
             "sleeves": {k: round(v, 2) for k, v in sleeves.items()},
-            "thesis_cap": round(thesis_cap, 2), "thesis_used": round(sleeves["thesis"], 2),
+            "thesis_cap": round(thesis_cap, 2), "thesis_used": round(sleeves["thesis"] + legs_value, 2),
             "by_class": rows, "holdings": sorted(holdings, key=lambda h: -h["value"]),
             "unclassified": sorted(unknown, key=lambda u: -u["value"]), "settings": settings,
             "accounts": list(registry.values())}

@@ -127,3 +127,38 @@ def test_portfolio_settings_and_allocation(cfg, conn, seeded):
     assert classes["us_equity"]["policy_pct"] == 60 and classes["us_equity"]["drift_pct"] is not None
     assert abs(sum(r["pct"] or 0 for r in out["by_class"]) - 100) < 0.5
     assert out["thesis_cap"] == round(out["investable"] * 0.2, 2)
+
+
+def test_theses_and_placement(cfg, conn, seeded):
+    from datetime import date
+    from homeai.connectors.market import _upsert_macro, _upsert_prices
+    from homeai.services import placement as P, theses as T
+    conn.execute("BEGIN")
+    _upsert_prices(conn, "TLT", [("2026-09-01", 90.0), ("2026-09-25", 99.0)], "test")
+    _upsert_prices(conn, "SPY", [("2026-09-01", 600.0), ("2026-09-25", 606.0)], "test")
+    _upsert_macro(conn, "wti_usd", [("2026-09-25", 97.0)], "test")
+    slug = T.save_thesis(conn, name="Rates break", view="high oil and high rates reverse", status="active", budget_pct=50,
+                         horizon_start="2026-09-01", horizon_end="2027-09-01", benchmark="spy",
+                         kill_metrics=[{"series": "wti_usd", "op": ">", "level": 95}, {"series": "price:TLT", "op": "<", "level": 80}])
+    leg = T.save_leg(conn, slug, symbol="tlt", quantity=100, entry_price=90, account_id=seeded["brok"])
+    with pytest.raises(ValueError):
+        T.save_leg(conn, slug, symbol="XLE", direction="short")
+    conn.execute("COMMIT")
+    t = T.list_theses(conn, cfg, today=date(2026, 9, 28), thesis_cap=20000)[0]
+    assert t["slug"] == "rates-break" and t["budget"] == 10000 and t["deployed"] == 9900 and t["pnl"] == 900
+    assert t["return_pct"] == 10.0 and t["benchmark_return_pct"] == 1.0 and t["kill_breached"]
+    assert [m["breached"] for m in t["kill_metrics"]] == [True, False] and 0 < t["horizon_pct"] < 20
+    keys = [a["key"] for a in T.alerts(conn, cfg, date(2026, 9, 28))]
+    assert "thesis_kill_rates-break_wti_usd" in keys
+    assert T.budget_status(conn, cfg)["deployed"] == 9900
+    out = P.place(conn, cfg, symbol="TLT", amount=10000, holding_months=9, expected_return_pct=10)
+    assert out["options"] and out["options"][0]["account_id"] == seeded["brok"]
+    taxable = out["options"][0]
+    assert taxable["tax_treatment"] == "taxable" and taxable["tax_rate_on_gain"] == out["rates"]["short_term_total"]
+    long = P.place(conn, cfg, symbol="TLT", amount=10000, holding_months=18)["options"][0]
+    assert long["tax_on_expected_gain"] < taxable["tax_on_expected_gain"]
+    an = P.analyze_expression(conn, cfg, symbols=["TLT"], amount=5000, holding_months=9, fetch=False)
+    c = an["candidates"][0]
+    assert c["class"] == "bonds" and c["price"]["close"] == 99.0 and an["thesis_budget"]["cap"] > 0
+    conn.execute("BEGIN"); T.save_thesis(conn, slug, status="closed"); conn.execute("COMMIT")
+    assert T.list_theses(conn, cfg, thesis_cap=1) == []

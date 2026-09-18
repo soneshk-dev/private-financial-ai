@@ -4,6 +4,7 @@
   import { money, compact, KIND_LABEL, titleCase } from '$lib/format';
   import StatTile from '$lib/components/StatTile.svelte';
   import AllocationPanel from '$lib/components/AllocationPanel.svelte';
+  import ThesesPanel from '$lib/components/ThesesPanel.svelte';
 
   let pos = $state<Positions | null>(null);
   let cr = $state<Crypto | null>(null);
@@ -33,6 +34,7 @@
 
 {#if look}
   <div class:loading><AllocationPanel alloc={look} onchanged={loadAlloc} /></div>
+  <ThesesPanel accounts={look.accounts} onchanged={loadAlloc} />
 {/if}
 
 <div class="grid kpis" class:loading style="margin-top:16px">

@@ -208,6 +208,63 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         except (ValueError, TypeError) as e:
             raise HTTPException(400, str(e))
 
+    @app.get("/api/theses")
+    def api_theses(closed: bool = False, conn: sqlite3.Connection = Depends(db)):
+        from ..services import theses
+        return {"theses": theses.list_theses(conn, cfg, include_closed=closed), "budget": theses.budget_status(conn, cfg)}
+
+    @app.post("/api/theses")
+    def api_thesis_save(body: dict, conn: sqlite3.Connection = Depends(db)):
+        from ..services import theses
+        try:
+            conn.execute("BEGIN")
+            slug = theses.save_thesis(conn, body.pop("slug", None), **body)
+            conn.execute("COMMIT")
+        except (ValueError, TypeError) as e:
+            conn.execute("ROLLBACK")
+            raise HTTPException(400, str(e))
+        return {"slug": slug}
+
+    @app.post("/api/theses/{slug}/legs")
+    def api_thesis_leg(slug: str, body: dict, conn: sqlite3.Connection = Depends(db)):
+        from ..services import theses
+        try:
+            conn.execute("BEGIN")
+            leg = theses.save_leg(conn, slug, body.pop("id", None), **body)
+            conn.execute("COMMIT")
+        except KeyError:
+            conn.execute("ROLLBACK")
+            raise HTTPException(404, "unknown thesis")
+        except (ValueError, TypeError) as e:
+            conn.execute("ROLLBACK")
+            raise HTTPException(400, str(e))
+        if body.get("symbol"):
+            try:
+                from ..connectors.market import MarketConnector
+                conn.execute("BEGIN"); MarketConnector(cfg).fetch_symbol(conn, body["symbol"]); conn.execute("COMMIT")
+            except Exception:  # noqa: BLE001
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+        return {"id": leg}
+
+    @app.delete("/api/theses/{slug}/legs/{leg_id}")
+    def api_thesis_leg_delete(slug: str, leg_id: int, conn: sqlite3.Connection = Depends(db)):
+        from ..services import theses
+        conn.execute("BEGIN"); theses.delete_leg(conn, slug, leg_id); conn.execute("COMMIT")
+        return {"deleted": leg_id}
+
+    @app.post("/api/portfolio/analyze")
+    def api_analyze(body: dict, conn: sqlite3.Connection = Depends(db)):
+        from ..services import placement
+        syms = body.get("symbols") or []
+        if isinstance(syms, str):
+            syms = [x for x in syms.replace(",", " ").split() if x]
+        if not syms:
+            raise HTTPException(400, "symbols required")
+        return placement.analyze_expression(conn, cfg, symbols=syms, amount=float(body.get("amount") or 0),
+                                            holding_months=int(body.get("holding_months") or 12),
+                                            expected_return_pct=float(body.get("expected_return_pct") or 10))
+
     @app.get("/api/market/macro")
     def api_market_macro(days: int = 30, conn: sqlite3.Connection = Depends(db)):
         return market.macro(conn, days)

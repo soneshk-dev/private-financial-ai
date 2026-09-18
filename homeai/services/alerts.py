@@ -50,6 +50,11 @@ def evaluate(conn: sqlite3.Connection, cfg: Config, today: date | None = None) -
                 out.append({"key": f"cliff_{r['cliff_month']}", "text": f"Projected reserves go negative in {r['cliff_month']}"})
         except Exception:  # noqa: BLE001
             pass
+    try:
+        from .theses import alerts as thesis_alerts
+        out.extend(thesis_alerts(conn, cfg, today))
+    except Exception:  # noqa: BLE001  (never let portfolio alerts break the others)
+        pass
     return out
 
 
