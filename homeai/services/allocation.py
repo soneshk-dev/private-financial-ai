@@ -22,6 +22,9 @@ DEFAULT_EXPOSURES: dict[str, dict[str, float]] = {
     "EEM": {"em_equity": 1},
     "BND": {"bonds": 1}, "AGG": {"bonds": 1}, "TLT": {"bonds": 1}, "IEF": {"bonds": 1}, "SHY": {"bonds": 1},
     "BNDX": {"bonds": 1}, "VBTLX": {"bonds": 1}, "EDV": {"bonds": 1}, "TIP": {"bonds": 1}, "GOVT": {"bonds": 1},
+    "XLE": {"us_equity": 1}, "VDE": {"us_equity": 1}, "XLK": {"us_equity": 1}, "XLF": {"us_equity": 1}, "XLU": {"us_equity": 1},
+    "XLV": {"us_equity": 1}, "XLI": {"us_equity": 1}, "XHB": {"us_equity": 1}, "ITB": {"us_equity": 1}, "VNQ": {"us_equity": 1},
+    "DRAM": {"us_equity": 1},
     "NODE": {"us_equity": 0.5, "other_crypto": 0.5}, "SOL": {"other_crypto": 1},
 }
 _NAME_HINTS: list[tuple[re.Pattern, dict[str, float]]] = [

@@ -226,3 +226,16 @@ def test_plaid_investment_txn_mapping():
     assert rec({"investment_transaction_id": "i3", "date": "2026-09-03", "amount": 7, "type": "fee", "subtype": "management fee"}, None)["flow"] == "fee"
     assert rec({"investment_transaction_id": "i4", "date": "2026-09-03", "amount": -500, "type": "cash", "subtype": "contribution"}, None)["flow"] == "transfer"
     assert rec({"investment_transaction_id": "i5", "date": "2026-09-03", "amount": 50, "type": "buy", "subtype": "dividend reinvestment"}, None)["flow"] == "investment_buy"
+
+
+def test_txn_until_closes_an_account_to_new_rows(conn, seeded):
+    from homeai.ledger.accounts import set_locked
+    from homeai.ledger.transactions import upsert_transaction
+    conn.execute("BEGIN")
+    set_locked(conn, seeded["chk"], txn_until="2026-09-18")
+    _, a = upsert_transaction(conn, source="plaid", source_txn_id="u1", account_id=seeded["chk"], posted_at="2026-09-18", amount=-5, description="IN")
+    _, b = upsert_transaction(conn, source="plaid", source_txn_id="u2", account_id=seeded["chk"], posted_at="2026-09-19", amount=-5, description="OUT")
+    set_locked(conn, seeded["chk"], txn_until=None)
+    _, c = upsert_transaction(conn, source="plaid", source_txn_id="u2", account_id=seeded["chk"], posted_at="2026-09-19", amount=-5, description="OUT")
+    conn.execute("COMMIT")
+    assert (a, b, c) == ("inserted", "skipped", "inserted")

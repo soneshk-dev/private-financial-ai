@@ -68,8 +68,11 @@ def set_locked(conn: sqlite3.Connection, aid: str, **fields: Any) -> None:
     locked = set(meta.get("locked", []))
     updates: dict[str, Any] = {}
     for k, v in fields.items():
-        if k == "txn_since":            # cutover date: connectors skip rows posted before it
-            meta["txn_since"] = v
+        if k in ("txn_since", "txn_until"):   # cutover dates: connectors skip rows posted before / after them
+            if v in (None, ""):
+                meta.pop(k, None)
+            else:
+                meta[k] = str(v)
             continue
         if k not in ("kind", "entity", "name", "is_active"):
             raise ValueError(f"cannot lock {k}")

@@ -36,9 +36,10 @@ def upsert_transaction(conn: sqlite3.Connection, *, source: str, source_txn_id: 
         raise KeyError(f"unknown account {account_id}")
     account_kind = account_kind or row["kind"]
     entity = entity or row["entity"]
-    since = (json.loads(row["meta"] or "{}") or {}).get("txn_since")
-    if since and posted_at < since:
-        return txn_id(source, source_txn_id), "skipped"   # before this account's cutover date
+    acct_meta = json.loads(row["meta"] or "{}") or {}
+    since, until = acct_meta.get("txn_since"), acct_meta.get("txn_until")
+    if (since and posted_at < since) or (until and posted_at > until):
+        return txn_id(source, source_txn_id), "skipped"   # outside this account's cutover window
 
     cat = category
     rule_flow = None
