@@ -5,6 +5,7 @@
   import { money, compact, monthLabel, pct } from '$lib/format';
   import StatTile from '$lib/components/StatTile.svelte';
   import Meter from '$lib/components/Meter.svelte';
+  import ProjectionsPanel from '$lib/components/ProjectionsPanel.svelte';
 
   let rw: Runway | null = $state(null);
   let tax: TaxEstimate | null = $state(null);
@@ -60,6 +61,9 @@
     </div>
   </div>
 {/if}
+
+<ProjectionsPanel />
+
 
 {#if tax}
   <div class="card" style="margin-top:16px" class:loading>

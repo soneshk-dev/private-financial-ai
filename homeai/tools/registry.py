@@ -103,6 +103,26 @@ def _set_portfolio_settings(conn, cfg, args) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+def _projections(conn, cfg) -> dict[str, Any]:
+    from ..services.projection import all_projections
+    out = all_projections(conn, cfg)
+    for g in out["goals"]:                       # keep the payload small for the model
+        g.get("projection", {}).pop("series", None)
+    out["retirement"].pop("series", None)
+    out.pop("settings", None)
+    return out
+
+
+def _set_plan(conn, cfg, args) -> dict[str, Any]:
+    from ..services.projection import save_settings
+    try:
+        return save_settings(conn, {k: v for k, v in args.items() if v is not None})
+    except (ValueError, TypeError) as e:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        return {"error": str(e)}
+
+
 def _theses(conn, cfg, args) -> dict[str, Any]:
     from ..services import theses
     return {"theses": theses.list_theses(conn, cfg, include_closed=bool(args.get("include_closed"))),
@@ -238,6 +258,16 @@ TOOLS: list[Tool] = [
                "crypto_in_policy": {"type": "boolean"}, "never_sell": {"type": "array", "items": {"type": "string"}},
                "policy": {"type": "object"}, "exposures": {"type": "object"}, "account_roles": {"type": "object"}}),
          _set_portfolio_settings, mutating=True),
+    Tool("get_projections", "Goal projections (probability of reaching each target by its date, p10/p50/p90 outcomes, the"
+         " monthly saving needed for the chosen confidence, debt payoff timing) and the retirement model (success"
+         " probability, assets at retirement, spending assumptions). Figures are Monte Carlo under editable assumptions.",
+         _obj(), lambda conn, cfg, a: _projections(conn, cfg)),
+    Tool("set_plan_settings", "Change planning assumptions: per-goal overrides under goals.<slug> (monthly_contribution,"
+         " target_amount, target_date, return_pct, vol_pct, debt_rate_pct, monthly_payment), retirement inputs"
+         " (current_age, retire_age, end_age, annual_spend, annual_contribution, other_income, other_income_age,"
+         " crypto_haircut_pct), inflation_pct, confidence_pct.",
+         _obj({"goals": {"type": "object"}, "retirement": {"type": "object"}, "inflation_pct": {"type": "number"},
+               "confidence_pct": {"type": "number"}}), _set_plan, mutating=True),
     Tool("get_theses", "The user's short/mid-term investment theses: view, horizon, budget within the thesis cap, legs with"
          " value and P&L, benchmark return, kill metrics with current values, plus the overall thesis budget.",
          _obj({"include_closed": {"type": "boolean"}}), _theses),

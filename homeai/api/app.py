@@ -208,6 +208,21 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         except (ValueError, TypeError) as e:
             raise HTTPException(400, str(e))
 
+    @app.get("/api/plan/projections")
+    def api_projections(conn: sqlite3.Connection = Depends(db)):
+        from ..services import projection
+        return projection.all_projections(conn, cfg)
+
+    @app.put("/api/plan/settings")
+    def api_plan_settings(body: dict, conn: sqlite3.Connection = Depends(db)):
+        from ..services import projection
+        try:
+            return projection.save_settings(conn, body)
+        except (ValueError, TypeError) as e:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise HTTPException(400, str(e))
+
     @app.get("/api/theses")
     def api_theses(closed: bool = False, conn: sqlite3.Connection = Depends(db)):
         from ..services import theses

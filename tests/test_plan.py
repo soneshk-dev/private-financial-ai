@@ -162,3 +162,29 @@ def test_theses_and_placement(cfg, conn, seeded):
     assert c["class"] == "bonds" and c["price"]["close"] == 99.0 and an["thesis_budget"]["cap"] > 0
     conn.execute("BEGIN"); T.save_thesis(conn, slug, status="closed"); conn.execute("COMMIT")
     assert T.list_theses(conn, cfg, thesis_cap=1) == []
+
+
+def test_projection_engine_and_models(cfg, conn, seeded):
+    from homeai.services import projection as P
+    flat = P.simulate(1000, 100, 12, 0.0, 0.0, paths=50, target=2200)
+    assert flat["end"]["p50"] == 2200 and flat["probability"] == 1.0
+    a = P.simulate(100000, 500, 60, 6, 12, paths=400, target=150000)
+    b = P.simulate(100000, 500, 60, 6, 12, paths=400, target=150000)
+    assert a == b and a["end"]["p10"] < a["end"]["p50"] < a["end"]["p90"] and 0 < a["probability"] < 1
+    drain = P.simulate(10000, 0, 24, 0, 0, paths=20, schedule=[-1000] * 24)
+    assert drain["depleted_probability"] == 1.0 and drain["end"]["p50"] == 0
+    need = P.required_monthly(0, 24, 0.0, 0.0, 24000, 0.8)
+    assert 950 <= need <= 1050
+    r, v = P.mix_assumption({"us_equity": 60, "bonds": 40}, P.DEFAULT_CLASS_ASSUMPTIONS, 0.3)
+    assert 5.9 < r < 6.1 and 6 < v < 16
+    with pytest.raises(ValueError):
+        P.save_settings(conn, {"nonsense": 1})
+    ret = P.retirement(conn, cfg)
+    assert ret["ready"] is False and ret["assets"] > 0
+    P.save_settings(conn, {"retirement": {"current_age": 48, "retire_age": 55, "annual_spend": 1000}, "paths": 200})
+    ret = P.retirement(conn, cfg)
+    assert ret["ready"] and ret["series"][0]["age"] == 48 and ret["annual_spend"] == 1000
+    P.save_settings(conn, {"retirement": {"annual_spend": 500000}})
+    assert P.retirement(conn, cfg)["success_probability"] < ret["success_probability"]
+    out = P.goal_projections(conn, cfg)
+    assert isinstance(out, list)
