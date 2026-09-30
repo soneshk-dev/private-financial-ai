@@ -44,7 +44,7 @@
       const when = (m as any).created_at;
       if (m.role === 'user') out.push({ ...m, when });
       else if (m.role === 'assistant' && m.tool_calls?.length) {
-        const names = m.tool_calls.map((t: any) => t.function?.name).filter(Boolean);
+        const names = m.tool_calls.map((t: any) => String(t.function?.name ?? '').replace(/^mcp__homeai__/, '')).filter(Boolean);
         const last = out[out.length - 1];
         if (last?.role === 'assistant' && last.pending) last.tools = [...(last.tools ?? []), ...names];
         else out.push({ role: 'assistant', content: '', tools: names, pending: true, when });
@@ -86,7 +86,7 @@
         if (ev.type === 'conversation') { if (!current) { current = ev.id; goto(`/chat?c=${ev.id}`, { replaceState: true, keepFocus: true, noScroll: true }); } }
         else if (ev.type === 'routing') status = `${ev.provider} · ${ev.model}`;
         else if (ev.type === 'status') status = ev.message;
-        else if (ev.type === 'tool_call') { ai.tools = [...(ai.tools ?? []), ev.name]; msgs = [...msgs]; scroll(); }
+        else if (ev.type === 'tool_call') { ai.tools = [...(ai.tools ?? []), ev.name.replace(/^mcp__homeai__/, '')]; msgs = [...msgs]; scroll(); }
         else if (ev.type === 'message') { ai.content = ev.content; ai.pending = false; ai.when = new Date().toISOString(); msgs = [...msgs]; scroll(); }
         else if (ev.type === 'error') { ai.content = `**Error:** ${ev.message}`; ai.pending = false; msgs = [...msgs]; }
         else if (ev.type === 'done') status = `${status} · ${ev.usage.rounds} round${ev.usage.rounds === 1 ? '' : 's'} · ${ev.usage.seconds}s`;
@@ -160,7 +160,7 @@
 
     <div class="chat-status">{status}</div>
     <form class="composer" onsubmit={send}>
-      <textarea bind:this={ta} bind:value={input} onkeydown={onKey} oninput={grow} rows="1" placeholder="Ask about spending, positions, theses, goals… (Enter to send, Shift+Enter for a new line)" disabled={busy}></textarea>
+      <textarea bind:this={ta} bind:value={input} onkeydown={onKey} oninput={grow} rows="1" placeholder="Ask about spending, positions, theses, goals… (Shift+Enter for a new line)" disabled={busy}></textarea>
       <button class="btn primary" type="submit" disabled={busy || !input.trim()}>{busy ? '…' : 'Send'}</button>
     </form>
   </section>
