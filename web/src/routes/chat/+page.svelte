@@ -29,7 +29,7 @@
   const groups = $derived.by(() => { const g: Record<string, Conversation[]> = {}; for (const c of shown) (g[day(c.updated_at)] ??= []).push(c); return ['Today', 'Yesterday', 'This week', 'This month', 'Older'].filter((k) => g[k]).map((k) => [k, g[k]] as const); });
 
   onMount(async () => {
-    try { models = await api.models(); provider = (models.find((m) => m.default) ?? models[0])?.name ?? null; } catch {}
+    api.models().then((m) => { models = m; provider = (m.find((x) => x.default) ?? m[0])?.name ?? null; }).catch(() => {});   // never block the list on the model probe
     await refresh();
     const c = page.url.searchParams.get('c');
     if (c) await load(c); else ta?.focus();
