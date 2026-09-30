@@ -160,3 +160,20 @@ def test_link_page_script_has_no_raw_newlines_in_strings():
     js = re.search(r"<script>\n(.*)</script></body>", LINK_HTML, re.S).group(1)
     for line in js.splitlines():
         assert line.count("'") % 2 == 0, line
+
+
+def test_conversation_rename_and_list(cfg, conn, seeded):
+    from fastapi.testclient import TestClient
+    from homeai.api.app import create_app
+    from homeai.llm import agent
+    conn.execute("BEGIN")
+    cid = agent.new_conversation(conn, title="first question")
+    agent.add_message(conn, cid, "user", "first question")
+    agent.add_message(conn, cid, "assistant", "the answer")
+    conn.execute("COMMIT")
+    client = TestClient(create_app(cfg))
+    lst = client.get("/api/conversations").json()
+    assert lst[0]["id"] == cid and lst[0]["preview"] == "the answer" and lst[0]["n"] == 2
+    assert client.patch(f"/api/conversations/{cid}", json={"title": "Renamed"}).status_code == 200
+    assert client.get(f"/api/conversations/{cid}").json()["title"] == "Renamed"
+    assert client.patch("/api/conversations/nope", json={"title": "x"}).status_code == 404

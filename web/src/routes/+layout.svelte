@@ -3,13 +3,11 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { api, type Health } from '$lib/api';
-  import Chat from '$lib/components/Chat.svelte';
 
   let { children } = $props();
-  let chatOpen = $state(false);
   let health: Health | null = $state(null);
   const links = [
-    ['/', 'Overview'], ['/cashflow', 'Cash flow'], ['/spending', 'Spending'], ['/transactions', 'Transactions'],
+    ['/', 'Overview'], ['/chat', 'Chat'], ['/cashflow', 'Cash flow'], ['/spending', 'Spending'], ['/transactions', 'Transactions'],
     ['/categories', 'Categories'], ['/portfolio', 'Portfolio'], ['/plan', 'Plan'], ['/business', 'Business'], ['/accounts', 'Accounts'],
   ];
   onMount(async () => { try { health = await api.health(); } catch {} });
@@ -35,4 +33,3 @@
     {@render children()}
   </main>
 </div>
-<Chat bind:open={chatOpen} />

@@ -64,9 +64,20 @@ def history(conn: sqlite3.Connection, cid: str, limit: int = 30) -> list[dict[st
 
 
 def list_conversations(conn: sqlite3.Connection, limit: int = 50) -> list[dict[str, Any]]:
-    rows = conn.execute("SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS n"
+    rows = conn.execute("SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS n,"
+                        " (SELECT content FROM messages m WHERE m.conversation_id = c.id AND m.role = 'assistant'"
+                        "  AND m.content IS NOT NULL ORDER BY m.id DESC LIMIT 1) AS last_answer"
                         " FROM conversations c ORDER BY updated_at DESC LIMIT ?", (limit,))
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["preview"] = (d.pop("last_answer") or "")[:140]
+        out.append(d)
+    return out
+
+
+def rename_conversation(conn: sqlite3.Connection, cid: str, title: str) -> bool:
+    return conn.execute("UPDATE conversations SET title = ? WHERE id = ?", (title.strip()[:120] or None, cid)).rowcount > 0
 
 
 def get_conversation(conn: sqlite3.Connection, cid: str) -> dict[str, Any] | None:

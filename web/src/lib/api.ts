@@ -49,7 +49,7 @@ export type RetirementSettings = { current_age: number | null; retire_age: numbe
 export type Retirement = { ready: boolean; reason?: string; assets: number; mix: Record<string, number>; return_pct: number; real_return_pct: number; vol_pct: number; annual_spend: number; annual_spend_source: string; settings: RetirementSettings; inflation_pct: number; four_pct_spend: number; needed_at_4pct: number; success_probability?: number; at_retirement?: { age: number; p10: number; p50: number; p90: number }; series?: Band[]; note?: string };
 export type Projections = { goals: GoalProjection[]; retirement: Retirement; settings: { inflation_pct: number; confidence_pct: number; paths: number } };
 export type Model = { name: string; base_url: string; reachable: boolean; model: string | null; default: boolean; fallback: boolean };
-export type Conversation = { id: string; title: string | null; provider: string | null; model: string | null; created_at: string; updated_at: string; n?: number; messages?: Message[] };
+export type Conversation = { id: string; title: string | null; provider: string | null; model: string | null; created_at: string; updated_at: string; n?: number; preview?: string; messages?: Message[] };
 export type Message = { id?: number; role: 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: any[] | null; name?: string | null };
 
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
@@ -108,6 +108,7 @@ export const api = {
   models: () => j<Model[]>('/api/models'),
   conversations: () => j<Conversation[]>('/api/conversations'),
   conversation: (id: string) => j<Conversation>(`/api/conversations/${id}`),
+  renameConversation: (id: string, title: string) => j<any>(`/api/conversations/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   deleteConversation: (id: string) => j<{ deleted: number }>(`/api/conversations/${id}`, { method: 'DELETE' }),
   brief: () => j<{ text: string }>('/api/brief'),
 };

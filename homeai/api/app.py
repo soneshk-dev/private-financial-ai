@@ -393,6 +393,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             raise HTTPException(404, "conversation not found")
         return c
 
+    @app.patch("/api/conversations/{cid}")
+    def api_conversation_rename(cid: str, body: dict, conn: sqlite3.Connection = Depends(db)):
+        from ..llm import agent
+        conn.execute("BEGIN")
+        ok = agent.rename_conversation(conn, cid, str(body.get("title") or ""))
+        conn.execute("COMMIT")
+        if not ok:
+            raise HTTPException(404, "conversation not found")
+        return {"id": cid, "title": body.get("title")}
+
     @app.delete("/api/conversations/{cid}")
     def api_conversation_delete(cid: str, conn: sqlite3.Connection = Depends(db)):
         conn.execute("BEGIN")
